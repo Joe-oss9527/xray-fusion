@@ -1,16 +1,37 @@
 name: ci
 on: [push, pull_request]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/shellcheck
+          key: ${{ runner.os }}-lint-${{ hashFiles('Makefile') }}
       - run: sudo apt-get update -y && sudo apt-get install -y shellcheck
       - run: make lint
   test-ubuntu:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/bats
+          key: ${{ runner.os }}-test-${{ hashFiles('Makefile') }}
       - run: sudo apt-get update -y && sudo apt-get install -y bats jq
       - run: make test
   test-matrix:
@@ -25,20 +46,26 @@ jobs:
           docker run --rm -v "$PWD":/w -w /w "${{ matrix.image }}"             bash -lc 'apt-get update || dnf -y makecache || true;               (apt-get install -y bats jq || dnf install -y bats jq || true);               make test'
 
 
-smoke-install:
-  runs-on: ubuntu-latest
-  steps:
-    - uses: actions/checkout@v4
-    - run: sudo apt-get update -y && sudo apt-get install -y bats jq gettext-base shellcheck zip
-    - run: XRF_DRY_RUN=true ./bin/xrf install --topology reality-only
+  smoke-install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/bats
+            ~/.cache/shellcheck
+          key: ${{ runner.os }}-smoke-${{ hashFiles('Makefile') }}
+      - run: sudo apt-get update -y && sudo apt-get install -y bats jq gettext-base shellcheck zip
+      - run: XRF_DRY_RUN=true ./bin/xrf install --topology reality-only
 
-
-alpine-openrc:
-  runs-on: ubuntu-latest
-  container: alpine:3.19
-  steps:
-    - run: apk add --no-cache bash git make jq gettext coreutils zip openrc bats
-    - run: git config --global --add safe.directory /__w/${{ github.event.repository.name }}/${{ github.event.repository.name }}
-    - uses: actions/checkout@v4
-    - run: make lint
-    - run: make test
+  alpine-openrc:
+    runs-on: ubuntu-latest
+    container: alpine:3.19
+    steps:
+      - run: apk add --no-cache bash git make jq gettext coreutils zip openrc bats
+      - run: git config --global --add safe.directory /__w/${{ github.event.repository.name }}/${{ github.event.repository.name }}
+      - uses: actions/checkout@v4
+      - run: make lint
+      - run: make test
