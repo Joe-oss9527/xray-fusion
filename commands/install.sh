@@ -61,8 +61,8 @@ main() {
   # Step 3: Configure topology settings
   ui::progress_step "Configuring Topology" "Setting up ${topology} parameters"
   if [[ "${topology}" == "vision-reality" ]]; then
-    XRAY_VISION_PORT="${XRAY_VISION_PORT:-443}"
-    XRAY_REALITY_PORT="${XRAY_REALITY_PORT:-8443}"
+    XRAY_VISION_PORT="${XRAY_VISION_PORT:-8443}"
+    XRAY_REALITY_PORT="${XRAY_REALITY_PORT:-443}"
     XRAY_DOMAIN="${XRAY_DOMAIN:-example.com}"
     XRAY_CERT_DIR="${XRAY_CERT_DIR:-/usr/local/etc/xray/certs}"
     XRAY_FALLBACK_PORT="${XRAY_FALLBACK_PORT:-8080}"

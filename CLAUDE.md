@@ -146,10 +146,14 @@ The codebase follows a strict layered architecture:
 ### Template Architecture Overhaul (2025-08-30)
 - **Modular Template System**: Replaced monolithic templates with component-based architecture
   - `base.json.tmpl`: Core Xray configuration framework (logging, routing, outbounds)
-  - `inbound-reality.json.tmpl`: Pure Reality protocol inbound configuration
-  - `inbound-vision.json.tmpl`: Pure Vision protocol inbound configuration with TLS
-  - `inbound-reality-dual.json.tmpl`: Reality inbound for dual-protocol topologies
-- **DRY Principle**: Eliminated 60% code duplication (219 lines → 89 lines)
+  - `inbound-reality.json.tmpl`: Reality protocol with `flow: "xtls-rprx-vision"` (single topology)
+  - `inbound-vision.json.tmpl`: Vision+TLS protocol with certificates and `flow: "xtls-rprx-vision"`
+  - `inbound-reality-dual.json.tmpl`: Reality protocol for dual-topology deployments
+- **DRY Principle**: Eliminated significant code duplication through modular design
 - **Dynamic Composition**: Templates are dynamically assembled based on topology requirements
 - **Official Compliance**: All configurations strictly follow XTLS/Xray official standards
-- **Port Optimization**: Reality-only topology now uses standard port 443 for better camouflage
+  - Reality protocol MUST use `flow: "xtls-rprx-vision"` (not empty string)
+  - Vision uses TLS security layer, Reality uses reality security layer
+- **Port Optimization**: 
+  - Reality-only: Port 443 for better camouflage
+  - Vision-Reality dual: Port 443 for Reality, Port 8443 for Vision+TLS
