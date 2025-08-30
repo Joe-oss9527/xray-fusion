@@ -17,6 +17,7 @@ xray_topology::load() {
   fi
   
   # Source the topology file which defines topology::context function
+  # shellcheck source=/dev/null
   . "${topologies_dir}/${topology}.sh"
 }
 

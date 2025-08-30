@@ -1,5 +1,6 @@
 #!/usr/bin/env bats
 
+bats_require_minimum_version 1.5.0
 load test_helper
 
 setup() {
@@ -56,7 +57,7 @@ teardown() {
 @test "topology context requires all variables" {
   # Test that topology functions fail with missing variables
   cd "${HERE}"
-  run bash -c ". topologies/reality-only.sh; topology::context"
+  run -127 bash -c ". topologies/reality-only.sh; topology::context"
   
   [ "$status" -ne 0 ]
   [[ "$output" =~ "must be set" ]]

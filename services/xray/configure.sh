@@ -56,10 +56,12 @@ main() {
       export XRAY_PUBLIC_KEY="fake_public_key_for_preview"
       core::log info "Using placeholder Reality keypair for dry run" "$(printf '{"public_key":"%s"}' "${XRAY_PUBLIC_KEY}")"
       
-      # Save placeholder public key
-      local state_dir="${XRF_VAR:-/var/lib/xray-fusion}"
-      mkdir -p "${state_dir}"
-      echo "${XRAY_PUBLIC_KEY}" > "${state_dir}/reality_pubkey.tmp"
+      # Save placeholder public key (skip in dry run to avoid permission errors)
+      if [[ "${XRF_DRY_RUN:-false}" != "true" ]]; then
+        local state_dir="${XRF_VAR:-/var/lib/xray-fusion}"
+        mkdir -p "${state_dir}"
+        echo "${XRAY_PUBLIC_KEY}" > "${state_dir}/reality_pubkey.tmp"
+      fi
     elif [[ -x "$(xray::bin)" ]]; then
       local keypair
       keypair="$($(xray::bin) x25519 2>/dev/null)"
@@ -70,10 +72,12 @@ main() {
         export XRAY_PUBLIC_KEY
         core::log info "Generated Reality keypair" "$(printf '{"public_key":"%s"}' "${XRAY_PUBLIC_KEY}")"
         
-        # Save public key to state directory for install.sh to access
-        local state_dir="${XRF_VAR:-/var/lib/xray-fusion}"
-        mkdir -p "${state_dir}"
-        echo "${XRAY_PUBLIC_KEY}" > "${state_dir}/reality_pubkey.tmp"
+        # Save public key to state directory for install.sh to access (skip in dry run)
+        if [[ "${XRF_DRY_RUN:-false}" != "true" ]]; then
+          local state_dir="${XRF_VAR:-/var/lib/xray-fusion}"
+          mkdir -p "${state_dir}"
+          echo "${XRAY_PUBLIC_KEY}" > "${state_dir}/reality_pubkey.tmp"
+        fi
       fi
     fi
   fi

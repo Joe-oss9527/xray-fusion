@@ -43,7 +43,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run bats inside ${{ matrix.image }}
         run: |
-          docker run --rm -v "$PWD":/w -w /w "${{ matrix.image }}"             bash -lc 'apt-get update || dnf -y makecache || true;               (apt-get install -y bats jq || dnf install -y bats jq || true);               make test'
+          docker run --rm -v "$PWD":/w -w /w "${{ matrix.image }}"             bash -lc 'apt-get update || dnf -y makecache || true;               (apt-get install -y make bats jq shellcheck || dnf install -y make bats jq ShellCheck || true);               make test'
 
 
   smoke-install:
@@ -64,8 +64,8 @@ jobs:
     runs-on: ubuntu-latest
     container: alpine:3.19
     steps:
-      - run: apk add --no-cache bash git make jq gettext coreutils zip openrc bats
-      - run: git config --global --add safe.directory /__w/${{ github.event.repository.name }}/${{ github.event.repository.name }}
+      - run: apk update && apk add --no-cache bash git make jq gettext coreutils zip openrc bats shellcheck
       - uses: actions/checkout@v4
+      - run: git config --global --add safe.directory /__w/${{ github.event.repository.name }}/${{ github.event.repository.name }}
       - run: make lint
       - run: make test
