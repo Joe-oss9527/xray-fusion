@@ -1,0 +1,70 @@
+{
+  "log": {
+    "access": "none",
+    "error": "none",
+    "loglevel": "${XRAY_LOG_LEVEL}"
+  },
+  "routing": {
+    "domainStrategy": "IPIfNonMatch",
+    "rules": []
+  },
+  "inbounds": [
+    {
+      "listen": "0.0.0.0",
+      "port": ${XRAY_VISION_PORT},
+      "protocol": "vless",
+      "settings": {
+        "clients": [{ "id": "${XRAY_UUID_VISION}", "flow": "xtls-rprx-vision" }],
+        "decryption": "none",
+        "fallbacks": [
+          { "alpn": "h2", "dest": "${XRAY_FALLBACK_PORT}", "xver": 1 },
+          { "dest": "${XRAY_FALLBACK_PORT}", "xver": 1 }
+        ]
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "tls",
+        "tlsSettings": {
+          "rejectUnknownSni": true,
+          "alpn": ["h2", "http/1.1"],
+          "certificates": [
+            {
+              "certificateFile": "${XRAY_CERT_DIR}/fullchain.pem",
+              "keyFile": "${XRAY_CERT_DIR}/privkey.pem",
+              "ocspStapling": 3600,
+              "minVersion": "1.2"
+            }
+          ]
+        }
+      },
+      "sniffing": { "enabled": true, "destOverride": ["http", "tls"] }
+    },
+    {
+      "listen": "0.0.0.0",
+      "port": ${XRAY_REALITY_PORT},
+      "protocol": "vless",
+      "settings": {
+        "clients": [{ "id": "${XRAY_UUID_REALITY}", "flow": "xtls-rprx-vision" }],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "show": false,
+          "dest": "${XRAY_REALITY_DEST}:443",
+          "xver": 0,
+          "serverNames": ["${XRAY_REALITY_SNI}"],
+          "privateKey": "${XRAY_PRIVATE_KEY}",
+          "shortIds": ["${XRAY_SHORT_ID}"],
+          "spiderX": "/"
+        }
+      },
+      "sniffing": { "enabled": true, "destOverride": ["http", "tls", "quic"] }
+    }
+  ],
+  "outbounds": [
+    { "protocol": "freedom", "tag": "direct" },
+    { "protocol": "blackhole", "tag": "block" }
+  ]
+}

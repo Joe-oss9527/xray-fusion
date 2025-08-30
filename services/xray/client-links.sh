@@ -16,11 +16,14 @@ generate_links() {
   local topology uuid short_id reality_pubkey domain server_ip port sni
   
   # Use environment variables if available (during installation), otherwise use state file
-  if [[ -n "${XRAY_PORT:-}" ]] && [[ -n "${XRAY_UUID:-}" ]]; then
+  if [[ -n "${XRAY_SHORT_ID:-}" ]] && [[ -n "${XRAY_REALITY_SNI:-}" || -n "${XRAY_DOMAIN:-}" ]]; then
     # Use current environment (installation in progress)
     topology="${1:-reality-only}"
-    port="${XRAY_PORT}"
-    uuid="${XRAY_UUID}"
+    if [[ -n "${XRAY_PORT:-}" ]] && [[ -n "${XRAY_UUID:-}" ]]; then
+      # reality-only topology
+      port="${XRAY_PORT}"
+      uuid="${XRAY_UUID}"
+    fi
     reality_pubkey="${XRAY_PUBLIC_KEY:-}"
     short_id="${XRAY_SHORT_ID:-}"
     sni="${XRAY_REALITY_SNI:-www.microsoft.com}"
@@ -36,11 +39,21 @@ generate_links() {
     fi
     
     topology="$(echo "${state_json}" | jq -r '.topology // "reality-only"')"
-    uuid="$(echo "${state_json}" | jq -r '.xray.uuid // empty')"
+    
+    # Handle different UUID formats based on topology
+    if [[ "${topology}" == "vision-reality" ]]; then
+      uuid_vision="$(echo "${state_json}" | jq -r '.xray.uuid_vision // empty')"
+      uuid_reality="$(echo "${state_json}" | jq -r '.xray.uuid_reality // empty')"
+      vision_port="$(echo "${state_json}" | jq -r '.xray.vision_port // "443"')"
+      reality_port="$(echo "${state_json}" | jq -r '.xray.reality_port // "8443"')"
+    else
+      uuid="$(echo "${state_json}" | jq -r '.xray.uuid // empty')"
+      port="$(echo "${state_json}" | jq -r '.xray.port // "8443"')"
+    fi
+    
     short_id="$(echo "${state_json}" | jq -r '.xray.short_id // empty')"
     reality_pubkey="$(echo "${state_json}" | jq -r '.xray.reality_public_key // empty')"
     domain="$(echo "${state_json}" | jq -r '.xray.domain // empty')"
-    port="$(echo "${state_json}" | jq -r '.xray.port // "8443"')"
     sni="$(echo "${state_json}" | jq -r '.xray.reality_sni // "www.microsoft.com"')"
   fi
   
@@ -68,8 +81,14 @@ generate_links() {
   
   case "${topology}" in
     "vision-reality")
-      if [[ -n "${domain}" && -n "${uuid}" ]]; then
-        local vision_link="vless://${uuid}@${domain}:443?security=tls&flow=xtls-rprx-vision&sni=${domain}&fp=chrome#Vision-${domain}"
+      # Handle Vision link generation
+      local vision_uuid="${uuid_vision:-${XRAY_UUID_VISION:-}}"
+      local reality_uuid="${uuid_reality:-${XRAY_UUID_REALITY:-}}"
+      local v_port="${vision_port:-${XRAY_VISION_PORT:-443}}"
+      local r_port="${reality_port:-${XRAY_REALITY_PORT:-8443}}"
+      
+      if [[ -n "${domain}" && -n "${vision_uuid}" ]]; then
+        local vision_link="vless://${vision_uuid}@${domain}:${v_port}?security=tls&flow=xtls-rprx-vision&sni=${domain}&fp=chrome#Vision-${domain}"
         echo "VISION : ${vision_link}"
         
         # Generate QR code if qrencode is available
@@ -79,8 +98,8 @@ generate_links() {
         fi
       fi
       
-      if [[ -n "${server_ip}" && -n "${uuid}" && -n "${reality_pubkey}" && -n "${short_id}" ]]; then
-        local reality_link="vless://${uuid}@${server_ip}:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${sni_first}&fp=chrome&pbk=${reality_pubkey}&sid=${short_id}&spx=%2F#REALITY-${server_ip}"
+      if [[ -n "${server_ip}" && -n "${reality_uuid}" && -n "${reality_pubkey}" && -n "${short_id}" ]]; then
+        local reality_link="vless://${reality_uuid}@${server_ip}:${r_port}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${sni_first}&fp=chrome&pbk=${reality_pubkey}&sid=${short_id}&spx=%2F#REALITY-${server_ip}"
         echo "REALITY: ${reality_link}"
         
         if command -v qrencode >/dev/null 2>&1; then
