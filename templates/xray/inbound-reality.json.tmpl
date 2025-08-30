@@ -1,0 +1,31 @@
+    {
+      "listen": "0.0.0.0",
+      "port": ${XRAY_PORT},
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "id": "${XRAY_UUID}",
+            "flow": ""
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "show": false,
+          "dest": "${XRAY_REALITY_DEST}:443",
+          "xver": 0,
+          "serverNames": ["${XRAY_REALITY_SNI}"],
+          "privateKey": "${XRAY_PRIVATE_KEY}",
+          "shortIds": ["${XRAY_SHORT_ID}"],
+          "spiderX": "/"
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": ["http", "tls", "quic"]
+      }
+    }

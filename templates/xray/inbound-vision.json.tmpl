@@ -1,0 +1,45 @@
+    {
+      "listen": "0.0.0.0",
+      "port": ${XRAY_VISION_PORT},
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "id": "${XRAY_UUID_VISION}",
+            "flow": "xtls-rprx-vision"
+          }
+        ],
+        "decryption": "none",
+        "fallbacks": [
+          {
+            "alpn": "h2",
+            "dest": "${XRAY_FALLBACK_PORT}",
+            "xver": 1
+          },
+          {
+            "dest": "${XRAY_FALLBACK_PORT}",
+            "xver": 1
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "tls",
+        "tlsSettings": {
+          "rejectUnknownSni": true,
+          "minVersion": "1.2",
+          "alpn": ["h2", "http/1.1"],
+          "certificates": [
+            {
+              "certificateFile": "${XRAY_CERT_DIR}/fullchain.pem",
+              "keyFile": "${XRAY_CERT_DIR}/privkey.pem",
+              "ocspStapling": 3600
+            }
+          ]
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": ["http", "tls"]
+      }
+    }

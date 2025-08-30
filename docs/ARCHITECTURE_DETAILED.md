@@ -19,7 +19,7 @@
 
 ## 2. 设计原则
 
-1. **模块化分层**：CLI / commands / services / modules / lib / templates / topologies / tests。
+1. **模块化分层**：CLI / commands / services / modules / lib / templates (modular) / topologies / tests。
 2. **契约优先**：模块 API 以命名空间约定（如 `pkg::ensure`、`svc::start`、`fw::open`）暴露，避免隐式耦合。
 3. **最小权限与原子落盘**：只在必要处使用 `sudo`；配置先写临时文件，再原子替换；敏感文件设定最小权限。
 4. **可观测**：所有命令可 `--json` 输出，关键步骤结构化日志（时间、级别、payload）。
@@ -68,8 +68,11 @@ topologies/            # 部署配方（输出 JSON 上下文）
   reality-only.sh
   vision-reality.sh
 
-templates/             # 配置模板（envsubst 渲染）
-  xray/config.json.tmpl
+templates/             # 模块化配置模板（envsubst 渲染）
+  xray/base.json.tmpl           # 核心框架（日志、路由、出站配置）
+  xray/inbound-reality.json.tmpl       # Reality 协议入站配置
+  xray/inbound-vision.json.tmpl        # Vision 协议入站配置（TLS）
+  xray/inbound-reality-dual.json.tmpl  # Reality 双协议入站配置
 
 lib/                   # 核心库（严格模式、企业级错误处理、日志、OS 检测等）
   core.sh              # 严格模式、结构化日志、企业级错误处理（错误行号与命令上下文）

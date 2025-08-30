@@ -7,13 +7,20 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 . "${HERE}/services/xray/common.sh"
 
 render() {
-  local tmpl="${1:-${HERE}/templates/xray/config.json.tmpl}"
+  local tmpl="$1"
+  local topology="$2"
   if ! command -v envsubst >/dev/null 2>&1; then
     core::log error "envsubst missing"; return 2
   fi
   io::ensure_dir "$(xray::confdir)" 0755
+  
+  # Build inbounds configuration
+  local inbounds_config
+  inbounds_config=$(build_inbounds_config "${topology}")
+  export XRAY_INBOUNDS="${inbounds_config}"
+  
   if [[ "${XRF_DRY_RUN:-false}" == "true" ]]; then
-    core::log info "Render preview" "$(printf '{"template":"%s"}' "${tmpl}")"
+    core::log info "Render preview" "$(printf '{"template":"%s","topology":"%s"}' "${tmpl}" "${topology}")"
     envsubst < "${tmpl}" | jq . >/dev/null 2>&1 || { core::log error "JSON invalid after render"; return 3; }
     envsubst < "${tmpl}" | sed -n '1,40p'
     return 0
@@ -38,15 +45,54 @@ render() {
   fi
 }
 
+build_inbounds_config() {
+  local topology="$1"
+  local inbounds=""
+  
+  case "${topology}" in
+    "reality-only")
+      inbounds=$(envsubst < "${HERE}/templates/xray/inbound-reality.json.tmpl")
+      ;;
+    "vision-reality")
+      local vision_inbound
+      local reality_inbound
+      vision_inbound=$(envsubst < "${HERE}/templates/xray/inbound-vision.json.tmpl")
+      reality_inbound=$(envsubst < "${HERE}/templates/xray/inbound-reality-dual.json.tmpl")
+      inbounds="${vision_inbound},\n${reality_inbound}"
+      ;;
+    *)
+      core::log error "Unknown topology: ${topology}"
+      return 1
+      ;;
+  esac
+  
+  echo -e "${inbounds}"
+}
+
+get_template_for_topology() {
+  echo "${HERE}/templates/xray/base.json.tmpl"
+}
+
 main() {
   core::init "$@"
-  local tmpl="${HERE}/templates/xray/config.json.tmpl"
+  local topology="" tmpl=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
+      --topology) topology="$2"; shift 2 ;;
       --template) tmpl="$2"; shift 2 ;;
       *) shift ;;
     esac
   done
+  
+  # If no template specified, determine from topology
+  if [[ -z "${tmpl}" ]]; then
+    if [[ -n "${topology}" ]]; then
+      tmpl="$(get_template_for_topology "${topology}")"
+    else
+      core::log error "Either --topology or --template must be specified"
+      return 1
+    fi
+  fi
   
   # Generate Reality private key if not set
   if [[ -z "${XRAY_PRIVATE_KEY:-}" ]]; then
@@ -82,6 +128,6 @@ main() {
     fi
   fi
   
-  render "${tmpl}"
+  render "${tmpl}" "${topology}"
 }
 main "$@"

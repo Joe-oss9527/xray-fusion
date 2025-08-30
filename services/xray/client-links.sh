@@ -48,7 +48,7 @@ generate_links() {
       reality_port="$(echo "${state_json}" | jq -r '.xray.reality_port // "8443"')"
     else
       uuid="$(echo "${state_json}" | jq -r '.xray.uuid // empty')"
-      port="$(echo "${state_json}" | jq -r '.xray.port // "8443"')"
+      port="$(echo "${state_json}" | jq -r '.xray.port // "443"')"
     fi
     
     short_id="$(echo "${state_json}" | jq -r '.xray.short_id // empty')"

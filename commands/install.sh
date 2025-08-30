@@ -67,7 +67,7 @@ main() {
     XRAY_CERT_DIR="${XRAY_CERT_DIR:-/usr/local/etc/xray/certs}"
     XRAY_FALLBACK_PORT="${XRAY_FALLBACK_PORT:-8080}"
   else
-    XRAY_PORT="${XRAY_PORT:-8443}"
+    XRAY_PORT="${XRAY_PORT:-443}"
   fi
   
   # Step 4: Generate secure credentials
@@ -205,7 +205,7 @@ main() {
     XRAY_DOMAIN="${XRAY_DOMAIN:-}" \
     XRAY_CERT_DIR="${XRAY_CERT_DIR}" \
     XRAY_FALLBACK_PORT="${XRAY_FALLBACK_PORT}" \
-    "${HERE}/services/xray/configure.sh" --template "${HERE}/templates/xray/config-vision-reality.json.tmpl"
+    "${HERE}/services/xray/configure.sh" --topology "${topology}"
   else
     # Use default reality-only template
     XRAY_PORT="${XRAY_PORT}" \
@@ -214,7 +214,7 @@ main() {
     XRAY_REALITY_DEST="${XRAY_REALITY_DEST:-www.microsoft.com}" \
     XRAY_REALITY_SNI="${XRAY_REALITY_SNI:-www.microsoft.com}" \
     XRAY_SHORT_ID="${XRAY_SHORT_ID}" \
-    "${HERE}/services/xray/configure.sh"
+    "${HERE}/services/xray/configure.sh" --topology "${topology}"
   fi
   
   # Read Reality public key from temporary file if it exists
