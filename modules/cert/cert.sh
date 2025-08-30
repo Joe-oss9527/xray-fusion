@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=modules/cert/acme_sh.sh
-. "$HERE/modules/cert/acme_sh.sh"
+. "${HERE}/modules/cert/acme_sh.sh"
 
 # Contract:
 # cert::issue <domain> <email> <out_dir>

@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # xrf-cert-renew wrapper: run acme.sh --cron with sane PATH, then reload xray
 set -eu
-PATH="/usr/local/bin:/usr/bin:/bin:/root/.acme.sh:$PATH"
+PATH="/usr/local/bin:/usr/bin:/bin:/root/.acme.sh:${PATH}"
 if command -v acme.sh >/dev/null 2>&1; then
   acme.sh --cron || true
 elif [ -x "/root/.acme.sh/acme.sh" ]; then

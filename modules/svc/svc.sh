@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # Service manager dispatcher
+SVC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "${SVC_DIR}/systemd.sh"
+. "${SVC_DIR}/openrc.sh"
 svc::detect() {
   if command -v systemctl >/dev/null 2>&1; then echo "systemd"; return 0; fi
   if command -v rc-service >/dev/null 2>&1; then echo "openrc"; return 0; fi

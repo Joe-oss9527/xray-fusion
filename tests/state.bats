@@ -10,7 +10,7 @@ teardown() {
 }
 
 @test "state::save and state::load roundtrip" {
-  run bash -lc '. modules/state.sh; state::save "{"a":1}"; state::load'
+  run bash -lc '. modules/state.sh; state::save "{\"a\":1}"; state::load'
   [ "$status" -eq 0 ]
   [[ "$output" == *'"a":1'* ]]
 }

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=modules/fw/ufw.sh
-. "$HERE/modules/fw/ufw.sh"
+. "${HERE}/modules/fw/ufw.sh"
 # shellcheck source=modules/fw/firewalld.sh
-. "$HERE/modules/fw/firewalld.sh"
+. "${HERE}/modules/fw/firewalld.sh"
 
 fw::detect() {
   if fw_ufw::is_available; then echo "ufw"; return 0; fi
@@ -14,8 +14,8 @@ fw::detect() {
 fw::open() {
   local port="$1"/tcp
   case "$(fw::detect)" in
-    ufw) fw_ufw::open "$port" ;;
-    firewalld) fw_firewalld::open "$port" ;;
+    ufw) fw_ufw::open "${port}" ;;
+    firewalld) fw_firewalld::open "${port}" ;;
     *) return 2 ;;
   esac
 }
@@ -23,8 +23,8 @@ fw::open() {
 fw::close() {
   local port="$1"/tcp
   case "$(fw::detect)" in
-    ufw) fw_ufw::close "$port" ;;
-    firewalld) fw_firewalld::close "$port" ;;
+    ufw) fw_ufw::close "${port}" ;;
+    firewalld) fw_firewalld::close "${port}" ;;
     *) return 2 ;;
   esac
 }

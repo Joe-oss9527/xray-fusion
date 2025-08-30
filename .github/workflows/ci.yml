@@ -30,7 +30,7 @@ smoke-install:
   steps:
     - uses: actions/checkout@v4
     - run: sudo apt-get update -y && sudo apt-get install -y bats jq gettext-base shellcheck zip
-    - run: XRF_DRY_RUN=true ./bin/xrf install --version v1.8.0 --topology reality-only
+    - run: XRF_DRY_RUN=true ./bin/xrf install --topology reality-only
 
 
 alpine-openrc:

@@ -4,7 +4,7 @@
 
 ```bash
 # Dry run install
-XRF_DRY_RUN=true bin/xrf install --version v1.8.0 --topology reality-only
+XRF_DRY_RUN=true bin/xrf install --topology reality-only
 
 # Health check
 bin/xrf doctor --json

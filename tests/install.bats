@@ -13,12 +13,12 @@ teardown() {
 }
 
 @test "xrf install (dry-run) completes" {
-  run bash -lc 'bin/xrf install --version v1.8.0 --topology reality-only'
+  run bash -lc 'bin/xrf install --topology reality-only'
   [ "$status" -eq 0 ]
   [[ "$output" == *"Plan install Xray"* ]]
 }
 
 @test "configure renders JSON (dry-run preview)" {
-  run bash -lc 'XRF_DRY_RUN=true XRAY_UUID=11111111-1111-1111-1111-111111111111 bin/xrf install --version v1.8.0'
+  run bash -lc 'XRF_DRY_RUN=true XRAY_UUID=11111111-1111-1111-1111-111111111111 bin/xrf install'
   [ "$status" -eq 0 ]
 }

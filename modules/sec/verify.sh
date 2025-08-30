@@ -7,9 +7,9 @@ verify::sha256() {
   if ! command -v sha256sum >/dev/null 2>&1; then
     echo "sha256sum not available" >&2; return 2
   fi
-  local got; got="$(sha256sum "$file" | awk '{print $1}')"
-  if [[ "$got" != "$expected" ]]; then
-    echo "SHA256 mismatch: expected=$expected got=$got" >&2
+  local got; got="$(sha256sum "${file}" | awk '{print $1}')"
+  if [[ "${got}" != "${expected}" ]]; then
+    echo "SHA256 mismatch: expected=${expected} got=${got}" >&2
     return 1
   fi
 }
@@ -21,7 +21,7 @@ verify::fetch_dgst_sha256() {
   dgst_url="${XRAY_SHA256_URL:-${url}.dgst}"
   if command -v curl >/dev/null 2>&1; then
     local tmp; tmp="$(mktemp)"
-    if curl -fsSL "$dgst_url" -o "$tmp"; then
+    if curl -fsSL "${dgst_url}" -o "${tmp}"; then
 # Accept multiple formats:
 # - SHA256=<hex>
 # - SHA256 (file) = <hex>
@@ -29,19 +29,19 @@ verify::fetch_dgst_sha256() {
 local val
 val="$(
   awk '
-    match($0,/^SHA256=([0-9A-Fa-f]{64})/,m){print m[1]; exit}
+    match($0,/^SHA2?-?256[= ] *([0-9A-Fa-f]{64})/,m){print m[1]; exit}
     match($0,/^SHA256 \([^)]+\) = ([0-9A-Fa-f]{64})/,m){print m[1]; exit}
     match($0,/^([0-9A-Fa-f]{64})[[:space:]]+/,m){print m[1]; exit}
-  ' "$tmp"
+  ' "${tmp}"
 )"
 
-      if [[ -n "$val" ]]; then
-        echo "$val"
-        rm -f "$tmp"
+      if [[ -n "${val}" ]]; then
+        echo "${val}"
+        rm -f "${tmp}"
         return 0
       fi
     fi
-    rm -f "$tmp"
+    rm -f "${tmp}"
   fi
   return 1
 }
@@ -53,14 +53,14 @@ verify::gpg() {
   if ! command -v gpg >/dev/null 2>&1; then
     echo "gpg not available" >&2
     return 2
-  }
-  if [[ ! -s "$sig" ]]; then
-    echo "signature file not found: $sig" >&2
+  fi
+  if [[ ! -s "${sig}" ]]; then
+    echo "signature file not found: ${sig}" >&2
     return 3
   fi
-  if [[ -n "$keyring" && -f "$keyring" ]]; then
-    gpg --no-default-keyring --keyring "$keyring" --verify "$sig" "$file"
+  if [[ -n "${keyring}" && -f "${keyring}" ]]; then
+    gpg --no-default-keyring --keyring "${keyring}" --verify "${sig}" "${file}"
   else
-    gpg --verify "$sig" "$file"
+    gpg --verify "${sig}" "${file}"
   fi
 }

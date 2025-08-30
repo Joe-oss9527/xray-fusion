@@ -1,12 +1,9 @@
 #!/usr/bin/env bash
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-. "$HERE/lib/core.sh"
-. "$HERE/modules/io.sh"
-. "$HERE/modules/svc/svc.sh"
-
-xray::prefix() { echo "${XRF_PREFIX:-/usr/local}"; }
-xray::etc()    { echo "${XRF_ETC:-/usr/local/etc}"; }
-xray::var()    { echo "${XRF_VAR:-/var/lib/xray-fusion}"; }
+. "${HERE}/lib/core.sh"
+. "${HERE}/modules/io.sh"
+. "${HERE}/modules/svc/svc.sh"
+. "${HERE}/services/xray/common.sh"
 
 usage() {
 cat <<EOF
@@ -19,11 +16,11 @@ EOF
 
 _rm() {
   local path="$1"
-  if [[ -e "$path" || -L "$path" ]]; then
+  if [[ -e "${path}" || -L "${path}" ]]; then
     if [[ "${XRF_DRY_RUN:-false}" == "true" ]]; then
-      echo "rm -rf $path"
+      echo "rm -rf ${path}"
     else
-      sudo rm -rf "$path" || rm -rf "$path"
+      sudo rm -rf "${path}" || rm -rf "${path}"
     fi
   fi
 }
@@ -42,19 +39,22 @@ main() {
   # stop service if present
   svc::stop xray || true
 
-  local bin="$(xray::prefix)/bin/xray"
-  local etc="$(xray::etc)/xray"
-  local var="$(xray::var)"
+  local bin
+  bin="$(xray::prefix)/bin/xray"
+  local etc
+  etc="$(xray::etc)/xray"
+  local var
+  var="$(xray::var)"
 
-  core::log info "Uninstall plan" "$(printf '{"bin":"%s","etc":"%s","var":"%s","purge":%s}' "$bin" "$etc" "$var" "$purge")"
+  core::log info "Uninstall plan" "$(printf '{"bin":"%s","etc":"%s","var":"%s","purge":%s}' "${bin}" "${etc}" "${var}" "${purge}")"
 
-  _rm "$bin"
-  _rm "$etc"
-  if [[ "$purge" == "true" ]]; then
+  _rm "${bin}"
+  _rm "${etc}"
+  if [[ "${purge}" == "true" ]]; then
     # best-effort remove service & timers/cron
-    "$HERE/commands/service.sh" remove || true
-    "$HERE/commands/cert.sh" unschedule || true
-    _rm "$var"
+    "${HERE}/commands/service.sh" remove || true
+    "${HERE}/commands/cert.sh" unschedule || true
+    _rm "${var}"
   fi
 
   core::log info "Uninstall completed" "{}"

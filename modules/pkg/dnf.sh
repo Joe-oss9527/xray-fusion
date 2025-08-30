@@ -8,5 +8,5 @@ dnf_pkg::refresh() {
 
 dnf_pkg::ensure() {
   local name="$1"
-  sudo dnf install -y -q "$name"
+  sudo dnf install -y -q "${name}"
 }

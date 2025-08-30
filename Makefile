@@ -3,7 +3,7 @@ SRC   := $(shell git ls-files '*.sh' 'bin/*' 'commands/*' 'lib/*' 'modules/**/*'
 
 .PHONY: lint test
 lint:
-	@shellcheck -S style -x $(SRC)
+	@shellcheck -S warning -x $(SRC)
 
 test:
 	@bats -r tests

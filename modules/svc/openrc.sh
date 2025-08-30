@@ -5,7 +5,7 @@ svc_openrc::start()  { sudo rc-service "$1" start || true; }
 svc_openrc::reload() { sudo rc-service "$1" reload || sudo rc-service "$1" restart || true; }
 svc_openrc::status() {
   local name="$1"
-  if rc-service "$name" status >/dev/null 2>&1; then
+  if rc-service "${name}" status >/dev/null 2>&1; then
     echo '{"active":true,"sub":"running"}'; return 0
   else
     echo '{"active":false,"sub":"stopped"}'; return 3

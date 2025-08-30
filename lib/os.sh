@@ -11,5 +11,5 @@ os::detect() {
   if command -v getenforce >/dev/null 2>&1; then
     [[ "$(getenforce 2>/dev/null)" == "Enforcing" ]] && selinux=true
   fi
-  printf '{"id":"%s","version_id":"%s","arch":"%s","selinux":%s}\n'     "$id" "$version_id" "$arch" "$selinux"
+  printf '{"id":"%s","version_id":"%s","arch":"%s","selinux":%s}\n'     "${id}" "${version_id}" "${arch}" "${selinux}"
 }

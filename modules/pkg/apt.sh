@@ -8,5 +8,5 @@ apt_pkg::refresh() {
 
 apt_pkg::ensure() {
   local name="$1"
-  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "$name"
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${name}"
 }
