@@ -1,0 +1,22 @@
+#!/sbin/openrc-run
+name="Xray Service"
+description="Xray proxy service (managed by xray-fusion)"
+command="/usr/local/bin/xray"
+command_args="-config /usr/local/etc/xray/config.json"
+pidfile="/run/xray.pid"
+command_background="yes"
+output_log="/var/log/xray.log"
+error_log="/var/log/xray.err.log"
+retry="5"
+respawn_delay="2"
+
+depend() {
+  need net
+}
+
+start_pre() {
+  ulimit -n 1048576 || true
+}
+
+supervisor="supervise-daemon"
+supervise_daemon_args="--pidfile ${pidfile} --stdout ${output_log} --stderr ${error_log}"

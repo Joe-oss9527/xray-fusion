@@ -1,0 +1,13 @@
+name: Feature request
+description: Suggest an idea
+title: "[feat]: "
+labels: ["feature"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: Idea
+      description: What and why?
+      placeholder: I wish the tool could...
+    validations:
+      required: true

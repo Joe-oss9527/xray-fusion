@@ -1,0 +1,13 @@
+name: Bug report
+description: File a bug report
+title: "[bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Also tell us what you expected to happen.
+      placeholder: A clear and concise description...
+    validations:
+      required: true

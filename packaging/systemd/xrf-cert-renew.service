@@ -1,0 +1,6 @@
+[Unit]
+Description=Renew certificates via acme.sh and reload xray
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/xrf-cert-renew.sh

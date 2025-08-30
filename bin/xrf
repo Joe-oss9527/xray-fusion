@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -euo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib/core.sh
+. "$HERE/lib/core.sh"
+
+usage() {
+  cat <<EOF
+xrf — Xray Fusion CLI
+Usage: xrf <command> [options]
+
+Commands:
+  status       Show platform & basic info
+  doctor       Quick health checks (ports, firewall, init)
+  install      Install Xray & render config
+  service      Set up or remove service
+  harden       Harden binary/service (setcap)
+  snapshot     Create/restore config snapshots
+  cert         Manage certificate auto-renew schedule
+  uninstall    Remove Xray and/or state
+  help         Show this help
+Global flags:
+  --json       JSON output when supported
+  --debug      Verbose logs
+EOF
+}
+
+main() {
+  core::init "$@"
+  local cmd="${1-}"; shift || true
+  case "${cmd}" in
+    help|"") usage ;;
+    status)  "$HERE/commands/status.sh" "$@" ;;
+    doctor)  "$HERE/commands/doctor.sh" "$@" ;;
+    install) "$HERE/commands/install.sh" "$@" ;;
+    service) "$HERE/commands/service.sh" "$@" ;;
+    harden)  "$HERE/commands/harden.sh" "$@" ;;
+    snapshot) "$HERE/commands/snapshot.sh" "$@" ;;
+    cert) "$HERE/commands/cert.sh" "$@" ;;
+    uninstall) "$HERE/commands/uninstall.sh" "$@" ;;
+    *) core::log error "Unknown command: ${cmd}"; usage; exit 2 ;;
+  esac
+}
+main "$@"

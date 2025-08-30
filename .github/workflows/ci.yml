@@ -1,0 +1,44 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -y && sudo apt-get install -y shellcheck
+      - run: make lint
+  test-ubuntu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -y && sudo apt-get install -y bats jq
+      - run: make test
+  test-matrix:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image: [debian:12, ubuntu:24.04, rockylinux:9, almalinux:9]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run bats inside ${{ matrix.image }}
+        run: |
+          docker run --rm -v "$PWD":/w -w /w "${{ matrix.image }}"             bash -lc 'apt-get update || dnf -y makecache || true;               (apt-get install -y bats jq || dnf install -y bats jq || true);               make test'
+
+
+smoke-install:
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v4
+    - run: sudo apt-get update -y && sudo apt-get install -y bats jq gettext-base shellcheck zip
+    - run: XRF_DRY_RUN=true ./bin/xrf install --version v1.8.0 --topology reality-only
+
+
+alpine-openrc:
+  runs-on: ubuntu-latest
+  container: alpine:3.19
+  steps:
+    - run: apk add --no-cache bash git make jq gettext coreutils zip openrc bats
+    - run: git config --global --add safe.directory /__w/${{ github.event.repository.name }}/${{ github.event.repository.name }}
+    - uses: actions/checkout@v4
+    - run: make lint
+    - run: make test
