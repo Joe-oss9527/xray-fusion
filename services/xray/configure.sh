@@ -4,6 +4,13 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 validate_shortid(){ [[ "${#1}" -le 16 && $(( ${#1}%2 )) -eq 0 && "$1" =~ ^[0-9a-fA-F]+$ ]]; }
 json_array_from_csv(){ local IFS=','; read -ra a <<<"$1"; local o="["; for n in "${a[@]}"; do n="$(echo "$n"|xargs)"; [[ -n "$n" ]] && o="${o}\"${n}\","; done; printf '%s' "${o%,}]"; }
+ensure_reality_dest(){
+  local dest="$1" sni="$2"
+  if [[ -z "$dest" ]]; then dest="${sni%%,*}"; fi
+  dest="$(echo "$dest" | xargs)"
+  if [[ "$dest" != *:* ]]; then dest="${dest}:443"; fi
+  printf '%s' "$dest"
+}
 digest_confdir(){ local d="$1"; if command -v jq >/dev/null 2>&1; then (for f in "$d"/*.json; do jq -S -c . "$f"; done) | sha256sum | awk '{print $1}'; else cat "$d"/*.json | sha256sum | awk '{print $1}'; fi; }
 
 render_release(){
@@ -22,7 +29,8 @@ render_release(){
 
   case "$topology" in
     reality-only)
-      : "${XRAY_PORT:=443}" : "${XRAY_UUID:?}" : "${XRAY_REALITY_SNI:=www.microsoft.com}" : "${XRAY_REALITY_DEST:=${XRAY_REALITY_SNI}}" : "${XRAY_SHORT_ID:=}" : "${XRAY_PRIVATE_KEY:=}" : "${XRAY_PUBLIC_KEY:=}"
+      : "${XRAY_PORT:=443}" : "${XRAY_UUID:?}" : "${XRAY_REALITY_SNI:=www.microsoft.com}" : "${XRAY_SHORT_ID:=}" : "${XRAY_PRIVATE_KEY:=}" : "${XRAY_PUBLIC_KEY:=}"
+      XRAY_REALITY_DEST="$(ensure_reality_dest "${XRAY_REALITY_DEST:-}" "${XRAY_REALITY_SNI}")"
       if [[ -z "$XRAY_SHORT_ID" || ! $(validate_shortid "$XRAY_SHORT_ID") ]]; then XRAY_SHORT_ID="$(openssl rand -hex 8 2>/dev/null || head -c 8 /dev/urandom | hexdump -e '16/1 \"%02x\"')"; fi
       if [[ -z "$XRAY_PRIVATE_KEY" && -x "$(xray::bin)" ]]; then kp="$("$(xray::bin)" x25519 2>/dev/null || true)"; XRAY_PRIVATE_KEY="$(echo "$kp" | awk '/Private key:/ {print $3}')"; XRAY_PUBLIC_KEY="$(echo "$kp" | awk '/Public key:/ {print $3}')"; fi
       [[ -n "$XRAY_PRIVATE_KEY" ]] || { core::log error "XRAY_PRIVATE_KEY required"; exit 2; }
@@ -30,12 +38,13 @@ render_release(){
       cat >"$d/05_inbounds.json" <<JSON
 {"inbounds":[{"tag":"reality","listen":"0.0.0.0","port":${XRAY_PORT},"protocol":"vless",
 "settings":{"clients":[{"id":"${XRAY_UUID}","flow":"xtls-rprx-vision"}],"decryption":"none"},
-"streamSettings":{"network":"tcp","security":"reality","realitySettings":{"show":false,"dest":"${XRAY_REALITY_DEST}:443","xver":0,"serverNames":${sn},"privateKey":"${XRAY_PRIVATE_KEY}","shortIds":["${XRAY_SHORT_ID}"],"spiderX":"/"}},
+"streamSettings":{"network":"tcp","security":"reality","realitySettings":{"show":false,"dest":"${XRAY_REALITY_DEST}","xver":0,"serverNames":${sn},"privateKey":"${XRAY_PRIVATE_KEY}","shortIds":["${XRAY_SHORT_ID}"],"spiderX":"/"}},
 "sniffing":{"enabled":${sniff_bool},"destOverride":["http","tls","quic"]}}]}
 JSON
       ;;
     vision-reality)
-      : "${XRAY_VISION_PORT:=8443}" : "${XRAY_REALITY_PORT:=443}" : "${XRAY_UUID_VISION:?}" : "${XRAY_UUID_REALITY:?}" : "${XRAY_DOMAIN:?}" : "${XRAY_CERT_DIR:=/usr/local/etc/xray/certs}" : "${XRAY_FALLBACK_PORT:=8080}" : "${XRAY_REALITY_SNI:=www.microsoft.com}" : "${XRAY_REALITY_DEST:=${XRAY_REALITY_SNI}}" : "${XRAY_SHORT_ID:=}" : "${XRAY_PRIVATE_KEY:=}" : "${XRAY_PUBLIC_KEY:=}"
+      : "${XRAY_VISION_PORT:=8443}" : "${XRAY_REALITY_PORT:=443}" : "${XRAY_UUID_VISION:?}" : "${XRAY_UUID_REALITY:?}" : "${XRAY_DOMAIN:?}" : "${XRAY_CERT_DIR:=/usr/local/etc/xray/certs}" : "${XRAY_FALLBACK_PORT:=8080}" : "${XRAY_REALITY_SNI:=www.microsoft.com}" : "${XRAY_SHORT_ID:=}" : "${XRAY_PRIVATE_KEY:=}" : "${XRAY_PUBLIC_KEY:=}"
+      XRAY_REALITY_DEST="$(ensure_reality_dest "${XRAY_REALITY_DEST:-}" "${XRAY_REALITY_SNI}")"
       if [[ -z "$XRAY_SHORT_ID" || ! $(validate_shortid "$XRAY_SHORT_ID") ]]; then XRAY_SHORT_ID="$(openssl rand -hex 8 2>/dev/null || head -c 8 /dev/urandom | hexdump -e '16/1 \"%02x\"')"; fi
       if [[ -z "$XRAY_PRIVATE_KEY" && -x "$(xray::bin)" ]]; then kp="$("$(xray::bin)" x25519 2>/dev/null || true)"; XRAY_PRIVATE_KEY="$(echo "$kp" | awk '/Private key:/ {print $3}')"; XRAY_PUBLIC_KEY="$(echo "$kp" | awk '/Public key:/ {print $3}')"; fi
       [[ -n "$XRAY_PRIVATE_KEY" ]] || { core::log error "XRAY_PRIVATE_KEY required"; exit 2; }
@@ -43,12 +52,12 @@ JSON
       cat >"$d/05_inbounds.json" <<JSON
 {"inbounds":[
 {"tag":"vision","listen":"0.0.0.0","port":${XRAY_VISION_PORT},"protocol":"vless",
- "settings":{"clients":[{"id":"${XRAY_UUID_VISION}","flow":"xtls-rprx-vision"}],"decryption":"none","fallbacks":[{"alpn":"h2","dest":${XRAY_FALLBACK_PORT},"xver":1},{"dest":${XRAY_FALLBACK_PORT},"xver":1}]},
+ "settings":{"clients":[{"id":"${XRAY_UUID_VISION}","flow":"xtls-rprx-vision"}],"decryption":"none","fallbacks":[{"alpn":"h2","dest":${XRAY_FALLBACK_PORT}},{"dest":${XRAY_FALLBACK_PORT}}]},
  "streamSettings":{"network":"tcp","security":"tls","tlsSettings":{"rejectUnknownSni":true,"minVersion":"1.2","alpn":["h2","http/1.1"],"certificates":[{"certificateFile":"${XRAY_CERT_DIR}/fullchain.pem","keyFile":"${XRAY_CERT_DIR}/privkey.pem","ocspStapling":3600}]}}, 
  "sniffing":{"enabled":${sniff_bool},"destOverride":["http","tls"]}},
 {"tag":"reality","listen":"0.0.0.0","port":${XRAY_REALITY_PORT},"protocol":"vless",
  "settings":{"clients":[{"id":"${XRAY_UUID_REALITY}","flow":"xtls-rprx-vision"}],"decryption":"none"},
- "streamSettings":{"network":"tcp","security":"reality","realitySettings":{"show":false,"dest":"${XRAY_REALITY_DEST}:443","xver":0,"serverNames":${sn2},"privateKey":"${XRAY_PRIVATE_KEY}","shortIds":["${XRAY_SHORT_ID}"],"spiderX":"/"}},
+ "streamSettings":{"network":"tcp","security":"reality","realitySettings":{"show":false,"dest":"${XRAY_REALITY_DEST}","xver":0,"serverNames":${sn2},"privateKey":"${XRAY_PRIVATE_KEY}","shortIds":["${XRAY_SHORT_ID}"],"spiderX":"/"}},
  "sniffing":{"enabled":${sniff_bool},"destOverride":["http","tls","quic"]}}]}
 JSON
       ;;
