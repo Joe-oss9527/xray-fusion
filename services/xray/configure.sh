@@ -85,14 +85,18 @@ deploy_release(){
   core::log info "deployed" "$(printf '{"active":"%s"}' "$(xray::active)")"
 }
 
+deploy_with_lock(){
+  local topology="$1"
+  local d
+  d="$(render_release "$topology")"
+  deploy_release "$d"
+}
+
 main(){
   core::init "$@"
   local topology="reality-only"
   while [[ $# -gt 0 ]]; do case "$1" in --topology) topology="$2"; shift 2;; *) shift;; esac; done
   plugins::ensure_dirs; plugins::load_enabled
-  core::with_flock "$(state::lock)" bash -c '
-    d="$(render_release "'"${topology}"'")"
-    deploy_release "$d"
-  '
+  core::with_flock "$(state::lock)" deploy_with_lock "$topology"
 }
 main "$@"
