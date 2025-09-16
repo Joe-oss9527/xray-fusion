@@ -66,7 +66,14 @@ JSON
 deploy_release(){
   local d="$1"
   if [[ -x "$(xray::bin)" && "${XRF_SKIP_XRAY_TEST:-false}" != "true" ]]; then
-    "$(xray::bin)" -test -confdir "$d" -format json
+    local test_output
+    if ! test_output="$("$(xray::bin)" -test -confdir "$d" -format json 2>&1)"; then
+      local esc
+      esc="${d//\"/\\\"}"
+      core::log error "xray config test failed" "$(printf '{"confdir":"%s"}' "$esc")"
+      printf '%s\n' "$test_output" >&2
+      return 1
+    fi
   fi
   local newdg; newdg="$(digest_confdir "$d")"; local olddg=""; [[ -f "$(state::digest)" ]] && olddg="$(cat "$(state::digest)")"
   if [[ -n "$olddg" && "$olddg" == "$newdg" ]]; then core::log info "no changes; skip reload" "$(printf '{"digest":"%s"}' "$newdg")"; return 0; fi

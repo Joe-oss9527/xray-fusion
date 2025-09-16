@@ -42,3 +42,28 @@ core::retry() {
     sleep $((i*i))
   done
 }
+
+core::with_flock() {
+  local lock="$1"
+  shift || true
+  [[ $# -gt 0 ]] || { core::log error "with_flock missing command" "$(printf '{"lock":"%s"}' "${lock//\"/\\\"}")"; return 2; }
+  local dir
+  dir="$(dirname "$lock")"
+  if ! mkdir -p "$dir" 2>/dev/null; then
+    core::log warn "mkdir fallback sudo" "$(printf '{"dir":"%s"}' "${dir//\"/\\\"}")"
+    sudo mkdir -p "$dir"
+  fi
+  if ! touch "$lock" 2>/dev/null; then
+    core::log warn "touch needs sudo" "$(printf '{"file":"%s"}' "${lock//\"/\\\"}")"
+    sudo touch "$lock"
+    sudo chown "$(id -u):$(id -g)" "$lock" 2>/dev/null || true
+  fi
+  if ! chmod 0644 "$lock" 2>/dev/null; then
+    sudo chmod 0644 "$lock" 2>/dev/null || true
+  fi
+  (
+    exec 200>>"$lock"
+    flock 200
+    "$@"
+  )
+}
