@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"; . "${HERE}/lib/core.sh"
+usage(){ cat <<EOF
+xrf — Xray Fusion Lite (complete clean)
+Usage: xrf <command>
+  install     Install Xray & deploy confdir (atomic, flock-protected)
+  service     Setup/remove systemd unit
+  status      Show version & active confdir
+  uninstall   Remove Xray (keep state)
+  links       Print client links
+  plugin      Manage plugins (list/enable/disable/info)
+  help        Show this help
+EOF
+}
+case "${1-}" in
+  install)   shift||true; "${HERE}/commands/install.sh" "$@" ;;
+  service)   shift||true; "${HERE}/commands/service.sh" "$@" ;;
+  status)    shift||true; "${HERE}/commands/status.sh" "$@" ;;
+  uninstall) shift||true; "${HERE}/commands/uninstall.sh" "$@" ;;
+  links)     shift||true; "${HERE}/services/xray/client-links.sh" "$@" ;;
+  plugin)    shift||true; "${HERE}/commands/plugin.sh" "$@" ;;
+  help|"") usage ;;
+  *) usage; exit 2 ;;
+esac

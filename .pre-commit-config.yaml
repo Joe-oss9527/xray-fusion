@@ -1,0 +1,13 @@
+repos:
+  - repo: https://github.com/scop/pre-commit-shfmt
+    rev: v3.7.0-4
+    hooks:
+      - id: shfmt
+        args: ["-i", "2", "-ci", "-sr", "-bn", "-ln", "bash"]
+        files: ^(bin/|commands/|lib/|modules/|services/|plugins/).+\.(sh)?$
+  - repo: https://github.com/jumanjihouse/pre-commit-hooks
+    rev: 3.0.0
+    hooks:
+      - id: shellcheck
+        args: ["-S", "style", "-x"]
+        files: ^(bin/|commands/|lib/|modules/|services/|plugins/).+\.(sh)?$

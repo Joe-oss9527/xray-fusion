@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+. "${HERE}/lib/core.sh"; . "${HERE}/lib/plugins.sh"; . "${HERE}/modules/io.sh"; . "${HERE}/modules/state.sh"; . "${HERE}/services/xray/common.sh"
+
+validate_shortid(){ [[ "${#1}" -le 16 && $(( ${#1}%2 )) -eq 0 && "$1" =~ ^[0-9a-fA-F]+$ ]]; }
+json_array_from_csv(){ local IFS=','; read -ra a <<<"$1"; local o="["; for n in "${a[@]}"; do n="$(echo "$n"|xargs)"; [[ -n "$n" ]] && o="${o}\"${n}\","; done; printf '%s' "${o%,}]"; }
+digest_confdir(){ local d="$1"; if command -v jq >/dev/null 2>&1; then (for f in "$d"/*.json; do jq -S -c . "$f"; done) | sha256sum | awk '{print $1}'; else cat "$d"/*.json | sha256sum | awk '{print $1}'; fi; }
+
+render_release(){
+  local topology="$1" rel="$(xray::releases)"; io::ensure_dir "$rel" 0755
+  local ts; ts="$(date -u +%Y%m%d%H%M%S)"; local d="${rel}/${ts}"; io::ensure_dir "$d" 0750
+
+  : "${XRAY_LOG_LEVEL:=warning}"; : "${XRAY_SNIFFING:=false}"
+  plugins::ensure_dirs; plugins::load_enabled; plugins::emit configure_pre "topology=${topology}" "release_dir=${d}"
+
+  # Logging
+  printf '{"log":{"access":"none","error":"none","loglevel":"%s"}}' "$XRAY_LOG_LEVEL" | io::atomic_write "$d/00_log.json" 0640
+  # Outbounds
+  printf '{"outbounds":[{"protocol":"freedom","tag":"direct"},{"protocol":"blackhole","tag":"block"}]}' | io::atomic_write "$d/06_outbounds.json" 0640
+
+  local sniff_bool; sniff_bool=$([[ "$XRAY_SNIFFING" == "true" ]] && echo true || echo false)
+
+  case "$topology" in
+    reality-only)
+      : "${XRAY_PORT:=443}" : "${XRAY_UUID:?}" : "${XRAY_REALITY_SNI:=www.microsoft.com}" : "${XRAY_REALITY_DEST:=${XRAY_REALITY_SNI}}" : "${XRAY_SHORT_ID:=}" : "${XRAY_PRIVATE_KEY:=}" : "${XRAY_PUBLIC_KEY:=}"
+      if [[ -z "$XRAY_SHORT_ID" || ! $(validate_shortid "$XRAY_SHORT_ID") ]]; then XRAY_SHORT_ID="$(openssl rand -hex 8 2>/dev/null || head -c 8 /dev/urandom | hexdump -e '16/1 \"%02x\"')"; fi
+      if [[ -z "$XRAY_PRIVATE_KEY" && -x "$(xray::bin)" ]]; then kp="$("$(xray::bin)" x25519 2>/dev/null || true)"; XRAY_PRIVATE_KEY="$(echo "$kp" | awk '/Private key:/ {print $3}')"; XRAY_PUBLIC_KEY="$(echo "$kp" | awk '/Public key:/ {print $3}')"; fi
+      [[ -n "$XRAY_PRIVATE_KEY" ]] || { core::log error "XRAY_PRIVATE_KEY required"; exit 2; }
+      local sn; sn="$(json_array_from_csv "$XRAY_REALITY_SNI")"
+      cat >"$d/05_inbounds.json" <<JSON
+{"inbounds":[{"tag":"reality","listen":"0.0.0.0","port":${XRAY_PORT},"protocol":"vless",
+"settings":{"clients":[{"id":"${XRAY_UUID}","flow":"xtls-rprx-vision"}],"decryption":"none"},
+"streamSettings":{"network":"tcp","security":"reality","realitySettings":{"show":false,"dest":"${XRAY_REALITY_DEST}:443","xver":0,"serverNames":${sn},"privateKey":"${XRAY_PRIVATE_KEY}","shortIds":["${XRAY_SHORT_ID}"],"spiderX":"/"}},
+"sniffing":{"enabled":${sniff_bool},"destOverride":["http","tls","quic"]}}]}
+JSON
+      ;;
+    vision-reality)
+      : "${XRAY_VISION_PORT:=8443}" : "${XRAY_REALITY_PORT:=443}" : "${XRAY_UUID_VISION:?}" : "${XRAY_UUID_REALITY:?}" : "${XRAY_DOMAIN:?}" : "${XRAY_CERT_DIR:=/usr/local/etc/xray/certs}" : "${XRAY_FALLBACK_PORT:=8080}" : "${XRAY_REALITY_SNI:=www.microsoft.com}" : "${XRAY_REALITY_DEST:=${XRAY_REALITY_SNI}}" : "${XRAY_SHORT_ID:=}" : "${XRAY_PRIVATE_KEY:=}" : "${XRAY_PUBLIC_KEY:=}"
+      if [[ -z "$XRAY_SHORT_ID" || ! $(validate_shortid "$XRAY_SHORT_ID") ]]; then XRAY_SHORT_ID="$(openssl rand -hex 8 2>/dev/null || head -c 8 /dev/urandom | hexdump -e '16/1 \"%02x\"')"; fi
+      if [[ -z "$XRAY_PRIVATE_KEY" && -x "$(xray::bin)" ]]; then kp="$("$(xray::bin)" x25519 2>/dev/null || true)"; XRAY_PRIVATE_KEY="$(echo "$kp" | awk '/Private key:/ {print $3}')"; XRAY_PUBLIC_KEY="$(echo "$kp" | awk '/Public key:/ {print $3}')"; fi
+      [[ -n "$XRAY_PRIVATE_KEY" ]] || { core::log error "XRAY_PRIVATE_KEY required"; exit 2; }
+      local sn2; sn2="$(json_array_from_csv "$XRAY_REALITY_SNI")"
+      cat >"$d/05_inbounds.json" <<JSON
+{"inbounds":[
+{"tag":"vision","listen":"0.0.0.0","port":${XRAY_VISION_PORT},"protocol":"vless",
+ "settings":{"clients":[{"id":"${XRAY_UUID_VISION}","flow":"xtls-rprx-vision"}],"decryption":"none","fallbacks":[{"alpn":"h2","dest":${XRAY_FALLBACK_PORT},"xver":1},{"dest":${XRAY_FALLBACK_PORT},"xver":1}]},
+ "streamSettings":{"network":"tcp","security":"tls","tlsSettings":{"rejectUnknownSni":true,"minVersion":"1.2","alpn":["h2","http/1.1"],"certificates":[{"certificateFile":"${XRAY_CERT_DIR}/fullchain.pem","keyFile":"${XRAY_CERT_DIR}/privkey.pem","ocspStapling":3600}]}}, 
+ "sniffing":{"enabled":${sniff_bool},"destOverride":["http","tls"]}},
+{"tag":"reality","listen":"0.0.0.0","port":${XRAY_REALITY_PORT},"protocol":"vless",
+ "settings":{"clients":[{"id":"${XRAY_UUID_REALITY}","flow":"xtls-rprx-vision"}],"decryption":"none"},
+ "streamSettings":{"network":"tcp","security":"reality","realitySettings":{"show":false,"dest":"${XRAY_REALITY_DEST}:443","xver":0,"serverNames":${sn2},"privateKey":"${XRAY_PRIVATE_KEY}","shortIds":["${XRAY_SHORT_ID}"],"spiderX":"/"}},
+ "sniffing":{"enabled":${sniff_bool},"destOverride":["http","tls","quic"]}}]}
+JSON
+      ;;
+    *) core::log error "unknown topology" "$(printf '{"topology":"%s"}' "$topology")"; exit 3;;
+  esac
+
+  printf '{"routing":{"domainStrategy":"IPIfNonMatch","rules":[]}}' | io::atomic_write "$d/09_routing.json" 0640
+  chmod 0750 "$d" || true; chown root:xray "$d" 2>/dev/null || true
+  for f in "$d"/*.json; do chown root:xray "$f" 2>/dev/null || true; chmod 0640 "$f" || true; done
+
+  plugins::emit configure_post "topology=${topology}" "release_dir=${d}"
+  echo "$d"
+}
+
+deploy_release(){
+  local d="$1"
+  if [[ -x "$(xray::bin)" && "${XRF_SKIP_XRAY_TEST:-false}" != "true" ]]; then
+    "$(xray::bin)" -test -confdir "$d" -format json
+  fi
+  local newdg; newdg="$(digest_confdir "$d")"; local olddg=""; [[ -f "$(state::digest)" ]] && olddg="$(cat "$(state::digest)")"
+  if [[ -n "$olddg" && "$olddg" == "$newdg" ]]; then core::log info "no changes; skip reload" "$(printf '{"digest":"%s"}' "$newdg")"; return 0; fi
+  io::ensure_dir "$(xray::confbase)" 0755; io::ensure_dir "$(xray::releases)" 0755
+  ln -sfn "$d" "$(xray::active).new"; mv -Tf "$(xray::active).new" "$(xray::active)"
+  echo "$newdg" | io::atomic_write "$(state::digest)" 0644
+  if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet xray 2>/dev/null; then systemctl reload-or-restart xray || systemctl restart xray || true; fi
+  plugins::emit deploy_post "active_dir=$(xray::active)"
+  core::log info "deployed" "$(printf '{"active":"%s"}' "$(xray::active)")"
+}
+
+main(){
+  core::init "$@"
+  local topology="reality-only"
+  while [[ $# -gt 0 ]]; do case "$1" in --topology) topology="$2"; shift 2;; *) shift;; esac; done
+  plugins::ensure_dirs; plugins::load_enabled
+  core::with_flock "$(state::lock)" bash -c '
+    d="$(render_release "'"${topology}"'")"
+    deploy_release "$d"
+  '
+}
+main "$@"
