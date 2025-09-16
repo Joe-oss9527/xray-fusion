@@ -27,9 +27,17 @@ main(){
   else
     : "${XRAY_PORT:=443}"; if [[ -z "${XRAY_UUID:-}" ]]; then XRAY_UUID="$("$(xray::bin)" uuid 2>/dev/null || uuidgen)"; fi
   fi
-  : "${XRAY_REALITY_SNI:=www.microsoft.com}" : "${XRAY_REALITY_DEST:=${XRAY_REALITY_SNI}}"
+  : "${XRAY_REALITY_SNI:=www.microsoft.com}"
+  if [[ -z "${XRAY_REALITY_DEST:-}" ]]; then
+    XRAY_REALITY_DEST="${XRAY_REALITY_SNI%%,*}"
+  fi
+  if [[ "${XRAY_REALITY_DEST}" != *:* ]]; then
+    XRAY_REALITY_DEST="${XRAY_REALITY_DEST}:443"
+  fi
   [[ -n "${XRAY_SHORT_ID:-}" ]] || XRAY_SHORT_ID="$(openssl rand -hex 8 2>/dev/null || head -c 8 /dev/urandom | hexdump -e '16/1 \"%02x\"')"
   export XRAY_SNIFFING="${XRAY_SNIFFING:-false}"
+  export XRAY_UUID XRAY_UUID_VISION XRAY_UUID_REALITY XRAY_SHORT_ID XRAY_REALITY_SNI XRAY_REALITY_DEST \
+    XRAY_PORT XRAY_VISION_PORT XRAY_REALITY_PORT XRAY_DOMAIN XRAY_CERT_DIR XRAY_FALLBACK_PORT
 
   plugins::emit install_post "topology=${topology}" "version=${version}"
   "${HERE}/services/xray/configure.sh" --topology "${topology}"
