@@ -32,7 +32,7 @@ render_release(){
       : "${XRAY_PORT:=443}" : "${XRAY_UUID:?}" : "${XRAY_REALITY_SNI:=www.microsoft.com}" : "${XRAY_SHORT_ID:=}" : "${XRAY_PRIVATE_KEY:=}" : "${XRAY_PUBLIC_KEY:=}"
       XRAY_REALITY_DEST="$(ensure_reality_dest "${XRAY_REALITY_DEST:-}" "${XRAY_REALITY_SNI}")"
       if [[ -z "$XRAY_SHORT_ID" || ! $(validate_shortid "$XRAY_SHORT_ID") ]]; then XRAY_SHORT_ID="$(openssl rand -hex 8 2>/dev/null || head -c 8 /dev/urandom | hexdump -e '16/1 \"%02x\"')"; fi
-      if [[ -z "$XRAY_PRIVATE_KEY" && -x "$(xray::bin)" ]]; then kp="$("$(xray::bin)" x25519 2>/dev/null || true)"; XRAY_PRIVATE_KEY="$(echo "$kp" | awk '/Private key:/ {print $3}')"; XRAY_PUBLIC_KEY="$(echo "$kp" | awk '/Public key:/ {print $3}')"; fi
+      if [[ -z "$XRAY_PRIVATE_KEY" && -x "$(xray::bin)" ]]; then kp="$("$(xray::bin)" x25519 2>/dev/null || true)"; XRAY_PRIVATE_KEY="$(echo "$kp" | awk '/PrivateKey:/ {print $2}')"; XRAY_PUBLIC_KEY="$(echo "$kp" | awk '/Password:/ {print $2}')"; fi
       [[ -n "$XRAY_PRIVATE_KEY" ]] || { core::log error "XRAY_PRIVATE_KEY required"; exit 2; }
       local sn; sn="$(json_array_from_csv "$XRAY_REALITY_SNI")"
       cat >"$d/05_inbounds.json" <<JSON
@@ -46,7 +46,7 @@ JSON
       : "${XRAY_VISION_PORT:=8443}" : "${XRAY_REALITY_PORT:=443}" : "${XRAY_UUID_VISION:?}" : "${XRAY_UUID_REALITY:?}" : "${XRAY_DOMAIN:?}" : "${XRAY_CERT_DIR:=/usr/local/etc/xray/certs}" : "${XRAY_FALLBACK_PORT:=8080}" : "${XRAY_REALITY_SNI:=www.microsoft.com}" : "${XRAY_SHORT_ID:=}" : "${XRAY_PRIVATE_KEY:=}" : "${XRAY_PUBLIC_KEY:=}"
       XRAY_REALITY_DEST="$(ensure_reality_dest "${XRAY_REALITY_DEST:-}" "${XRAY_REALITY_SNI}")"
       if [[ -z "$XRAY_SHORT_ID" || ! $(validate_shortid "$XRAY_SHORT_ID") ]]; then XRAY_SHORT_ID="$(openssl rand -hex 8 2>/dev/null || head -c 8 /dev/urandom | hexdump -e '16/1 \"%02x\"')"; fi
-      if [[ -z "$XRAY_PRIVATE_KEY" && -x "$(xray::bin)" ]]; then kp="$("$(xray::bin)" x25519 2>/dev/null || true)"; XRAY_PRIVATE_KEY="$(echo "$kp" | awk '/Private key:/ {print $3}')"; XRAY_PUBLIC_KEY="$(echo "$kp" | awk '/Public key:/ {print $3}')"; fi
+      if [[ -z "$XRAY_PRIVATE_KEY" && -x "$(xray::bin)" ]]; then kp="$("$(xray::bin)" x25519 2>/dev/null || true)"; XRAY_PRIVATE_KEY="$(echo "$kp" | awk '/PrivateKey:/ {print $2}')"; XRAY_PUBLIC_KEY="$(echo "$kp" | awk '/Password:/ {print $2}')"; fi
       [[ -n "$XRAY_PRIVATE_KEY" ]] || { core::log error "XRAY_PRIVATE_KEY required"; exit 2; }
       local sn2; sn2="$(json_array_from_csv "$XRAY_REALITY_SNI")"
       cat >"$d/05_inbounds.json" <<JSON

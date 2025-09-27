@@ -15,7 +15,7 @@ xray::install(){
   esac
 
   if [[ "$version" == "latest" ]]; then
-    version=$(curl -fsSL https://api.github.com/repos/XTLS/Xray-core/releases/latest | grep -o '"tag_name":"[^"]*"' | cut -d'"' -f4)
+    version=$(curl -fsSL https://api.github.com/repos/XTLS/Xray-core/releases/latest | grep -o '"tag_name":[[:space:]]*"[^"]*"' | cut -d'"' -f4)
     [[ -n "$version" && "$version" != "null" ]] || { core::log error "resolve latest failed" "{}"; exit 1; }
   fi
   [[ "$version" =~ ^v ]] || version="v${version}"
@@ -23,7 +23,7 @@ xray::install(){
   url="${XRAY_URL:-https://github.com/XTLS/Xray-core/releases/download/${version}/${url_tmpl}}"
   sha="${XRAY_SHA256:-}"
 
-  local tmp; tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+  tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
   core::log info "download" "$(printf '{"url":"%s"}' "$url")"; curl -fsSL "$url" -o "$tmp/xray.zip"
 
   if [[ -z "$sha" ]]; then
