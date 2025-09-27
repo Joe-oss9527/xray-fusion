@@ -94,7 +94,7 @@ caddy::setup_auto_tls() {
   io::ensure_dir "$(caddy::config_dir)" 0755
   io::ensure_dir "$(caddy::cert_dir)" 0755
 
-  # 创建 Caddyfile 配置
+  # 创建简单的 Caddyfile 配置 - Caddy 会自动处理 HTTPS
   cat > "$(caddy::config_file)" << EOF
 {
   admin off
@@ -103,17 +103,7 @@ caddy::setup_auto_tls() {
 }
 
 ${domain} {
-  tls {
-    on_demand
-  }
-
   reverse_proxy 127.0.0.1:${xray_port}
-
-  # 将证书复制到 Xray 目录
-  tls {
-    cert_file $(caddy::cert_dir)/fullchain.pem
-    key_file $(caddy::cert_dir)/privkey.pem
-  }
 }
 EOF
 
@@ -134,13 +124,24 @@ caddy::wait_for_cert() {
 
   core::log info "waiting for certificate" "$(printf '{"domain":"%s"}' "${domain}")"
 
+  # 等待 Caddy 启动并获取证书
   while [[ $waited -lt $max_wait ]]; do
-    if [[ -f "$(caddy::cert_dir)/fullchain.pem" && -f "$(caddy::cert_dir)/privkey.pem" ]]; then
-      core::log info "certificate ready" "$(printf '{"domain":"%s","waited":"%ds"}' "${domain}" "${waited}")"
-      return 0
+    # 检查 Caddy 是否正在运行
+    if systemctl is-active --quiet caddy; then
+      # 等待一点时间让 Caddy 获取证书
+      sleep 10
+      # 尝试同步证书
+      /usr/local/bin/caddy-cert-sync 2>/dev/null || true
+
+      # 检查证书是否已同步
+      if [[ -f "$(caddy::cert_dir)/fullchain.pem" && -f "$(caddy::cert_dir)/privkey.pem" ]]; then
+        core::log info "certificate ready" "$(printf '{"domain":"%s","waited":"%ds"}' "${domain}" "${waited}")"
+        return 0
+      fi
     fi
-    sleep 2
-    ((waited += 2))
+
+    sleep 5
+    ((waited += 5))
   done
 
   core::log error "certificate timeout" "$(printf '{"domain":"%s","waited":"%ds"}' "${domain}" "${waited}")"
@@ -151,25 +152,32 @@ caddy::setup_cert_sync() {
   local domain="${1}"
 
   # 创建证书同步脚本
-  cat > /usr/local/bin/caddy-cert-sync << 'EOF'
+  cat > /usr/local/bin/caddy-cert-sync << EOF
 #!/bin/bash
 # 同步 Caddy 证书到 Xray 目录
+DOMAIN="${domain}"
 CADDY_CERT_DIR="/root/.local/share/caddy/certificates/acme-v02.api.letsencrypt.org-directory"
 XRAY_CERT_DIR="/usr/local/etc/xray/certs"
 
-for cert_dir in "${CADDY_CERT_DIR}"/*; do
-  if [[ -d "${cert_dir}" ]]; then
-    domain_name=$(basename "${cert_dir}")
-    if [[ -f "${cert_dir}/${domain_name}.crt" && -f "${cert_dir}/${domain_name}.key" ]]; then
-      cp "${cert_dir}/${domain_name}.crt" "${XRAY_CERT_DIR}/fullchain.pem"
-      cp "${cert_dir}/${domain_name}.key" "${XRAY_CERT_DIR}/privkey.pem"
-      chmod 644 "${XRAY_CERT_DIR}/fullchain.pem"
-      chmod 600 "${XRAY_CERT_DIR}/privkey.pem"
-      chown root:xray "${XRAY_CERT_DIR}"/*.pem 2>/dev/null || true
-      break
+# 查找域名对应的证书目录
+for cert_dir in "\${CADDY_CERT_DIR}"/*/; do
+  if [[ -d "\${cert_dir}" ]]; then
+    cert_files=("\${cert_dir}"\${DOMAIN}.crt "\${cert_dir}"\${DOMAIN}.key)
+    if [[ -f "\${cert_files[0]}" && -f "\${cert_files[1]}" ]]; then
+      mkdir -p "\${XRAY_CERT_DIR}"
+      cp "\${cert_files[0]}" "\${XRAY_CERT_DIR}/fullchain.pem"
+      cp "\${cert_files[1]}" "\${XRAY_CERT_DIR}/privkey.pem"
+      chmod 644 "\${XRAY_CERT_DIR}/fullchain.pem"
+      chmod 600 "\${XRAY_CERT_DIR}/privkey.pem"
+      chown root:xray "\${XRAY_CERT_DIR}"/*.pem 2>/dev/null || true
+      echo "[caddy-cert-sync] certificates updated for \${DOMAIN}"
+      exit 0
     fi
   fi
 done
+
+echo "[caddy-cert-sync] no certificates found for \${DOMAIN}"
+exit 1
 EOF
 
   chmod +x /usr/local/bin/caddy-cert-sync
@@ -201,9 +209,6 @@ EOF
   systemctl daemon-reload
   systemctl enable caddy-cert-sync.timer
   systemctl start caddy-cert-sync.timer
-
-  # 立即执行一次同步
-  /usr/local/bin/caddy-cert-sync
 
   core::log info "certificate sync configured" "$(printf '{"domain":"%s"}' "${domain}")"
 }
