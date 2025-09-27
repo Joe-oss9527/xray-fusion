@@ -23,50 +23,46 @@ curl -sL https://github.com/Joe-oss9527/xray-fusion/raw/main/uninstall.sh | bash
 ### Reality-only
 - **特点**：无需域名，伪装 SNI，隐蔽性强
 - **端口**：443
-- **用法**：开箱即用
+- **用法**：开箱即用，适合个人使用
 
 ### Vision-Reality
 - **特点**：真实 TLS + Reality 备用，双重保护
 - **端口**：8443 (Vision), 443 (Reality)
-- **要求**：需要域名所有权
+- **要求**：需要域名所有权和自动证书管理
 
-## 手动管理
+## 命令参数
 
+### 基本语法
 ```bash
-# 克隆仓库
-git clone https://github.com/Joe-oss9527/xray-fusion.git
-cd xray-fusion
+# 一键安装
+curl -sL install.sh | bash -s -- [参数]
 
-# 安装 Reality-only
-bin/xrf install --topology reality-only
-
-# 安装 Vision-Reality（需要域名）
-bin/xrf install --topology vision-reality --domain your.domain.com --plugins cert-auto
-
-# 查看连接信息
-bin/xrf links
-
-# 查看状态
-bin/xrf status
-
-# 卸载
-bin/xrf uninstall
+# 手动安装
+bin/xrf install [参数]
 ```
 
-## 配置选项
-
-### 基础配置
+### 可用参数
 ```bash
-export XRAY_SNI=www.microsoft.com    # SNI 伪装域名
-export XRAY_PORT=443                 # 监听端口
-export XRAY_SNIFFING=false           # 流量嗅探
+--topology reality-only|vision-reality  # 部署拓扑（必需）
+--domain <domain>                       # 域名（vision-reality 模式必需）
+--version <version>                     # Xray 版本（默认：latest）
+--plugins <plugin1,plugin2>             # 启用插件列表，逗号分隔
+--debug                                 # 调试模式
 ```
 
-### Vision-Reality 配置
+### 完整示例
 ```bash
-export XRAY_DOMAIN=your.domain.com   # 真实域名
-export XRAY_VISION_PORT=8443         # Vision 端口
-export XRAY_REALITY_PORT=443         # Reality 端口
+# Reality-only 基础安装
+curl -sL install.sh | bash -s -- --topology reality-only
+
+# Reality-only 带防火墙和日志插件
+curl -sL install.sh | bash -s -- --topology reality-only --plugins firewall,logrotate-obs
+
+# Vision-Reality 带自动证书
+curl -sL install.sh | bash -s -- --topology vision-reality --domain example.com --plugins cert-auto
+
+# 指定版本的完整安装
+curl -sL install.sh | bash -s -- --topology vision-reality --domain example.com --version v1.8.0 --plugins cert-auto,firewall
 ```
 
 ## 插件系统
@@ -77,17 +73,47 @@ export XRAY_REALITY_PORT=443         # Reality 端口
 - **logrotate-obs**: 日志轮转和观测
 - **links-qr**: 连接二维码生成
 
-### 插件管理
+### 插件使用
+推荐在安装时通过 `--plugins` 参数启用：
+
 ```bash
-# 启用插件
-bin/xrf plugin enable cert-auto
+# 单个插件
+--plugins cert-auto
 
-# 禁用插件
-bin/xrf plugin disable cert-auto
-
-# 查看插件
-bin/xrf plugin list
+# 多个插件
+--plugins cert-auto,firewall,logrotate-obs
 ```
+
+## 手动管理
+
+如需本地开发或高级配置：
+
+```bash
+# 克隆仓库
+git clone https://github.com/Joe-oss9527/xray-fusion.git
+cd xray-fusion
+
+# 安装
+bin/xrf install --topology reality-only
+bin/xrf install --topology vision-reality --domain your.domain.com --plugins cert-auto
+
+# 管理
+bin/xrf status    # 查看状态
+bin/xrf links     # 查看连接信息
+bin/xrf uninstall # 卸载
+
+# 插件管理（可选）
+bin/xrf plugin list
+bin/xrf plugin enable cert-auto
+bin/xrf plugin disable cert-auto
+```
+
+## 系统要求
+
+- Ubuntu/Debian/CentOS/RHEL
+- systemd
+- curl, unzip
+- 64位系统
 
 ## 开发
 
@@ -98,13 +124,6 @@ make fmt
 # 代码检查
 make lint
 ```
-
-## 系统要求
-
-- Ubuntu/Debian/CentOS/RHEL
-- systemd
-- curl, unzip
-- 64位系统
 
 ## 许可证
 
