@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # xray-fusion online installer
-# Usage: curl -sL https://raw.githubusercontent.com/Joe-oss9527/xray-fusion/main/install.sh | bash
+# Usage: curl -sL https://raw.githubusercontent.com/Joe-oss9527/xray-fusion/main/install.sh | bash -s -- [options]
 
 set -euo pipefail
 
@@ -11,19 +11,18 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Default values
-DEFAULT_TOPOLOGY="reality-only"
-DEFAULT_VERSION="latest"
+# Configuration
 REPO_URL="${XRF_REPO_URL:-https://github.com/Joe-oss9527/xray-fusion.git}"
 BRANCH="${XRF_BRANCH:-main}"
 INSTALL_DIR="${XRF_INSTALL_DIR:-/usr/local/xray-fusion}"
 
-# Runtime variables
-TOPOLOGY="${DEFAULT_TOPOLOGY}"
-XRAY_VERSION_REQ="${DEFAULT_VERSION}"
-ENABLE_PLUGINS=""
-PROXY=""
+# Runtime variables (will be set by args::parse)
+TOPOLOGY=""
+DOMAIN=""
+VERSION=""
+PLUGINS=""
 DEBUG=""
+PROXY=""
 
 SYMLINK_PATH="/usr/local/bin/xrf"
 INSTALL_DIR_PREEXISTING="false"
@@ -48,51 +47,196 @@ cleanup() {
 
 trap cleanup EXIT
 
+# Load unified argument parsing (embedded for installation)
+source_args_module() {
+  # Create temporary args module for installation
+  cat > "${TMP_DIR}/args.sh" << 'ARGS_EOF'
+#!/usr/bin/env bash
+# Temporary unified argument parsing for installation
+
+# Initialize default values
+args::init() {
+  TOPOLOGY="reality-only"
+  DOMAIN=""
+  VERSION="latest"
+  PLUGINS=""
+  DEBUG="false"
+}
+
+# Parse command line arguments
+args::parse() {
+  while [[ $# -gt 0 ]]; do
+    case "${1}" in
+      --topology|-t)
+        args::validate_topology "${2:-}" || return 1
+        TOPOLOGY="${2}"
+        shift 2
+        ;;
+      --domain|-d)
+        args::validate_domain "${2:-}" || return 1
+        DOMAIN="${2}"
+        shift 2
+        ;;
+      --version|-v)
+        args::validate_version "${2:-}" || return 1
+        VERSION="${2}"
+        shift 2
+        ;;
+      --plugins|-p)
+        PLUGINS="${2:-}"
+        shift 2
+        ;;
+      --proxy)
+        PROXY="${2:-}"
+        shift 2
+        ;;
+      --install-dir)
+        INSTALL_DIR="${2:-}"
+        shift 2
+        ;;
+      --debug)
+        DEBUG="true"
+        shift
+        ;;
+      --help|-h)
+        return 10
+        ;;
+      --)
+        shift
+        break
+        ;;
+      *)
+        log_error "Unknown argument: ${1}"
+        return 1
+        ;;
+    esac
+  done
+
+  # Validate configuration
+  args::validate_config || return 1
+  return 0
+}
+
+# Validation functions
+args::validate_topology() {
+  local topology="${1:-}"
+  [[ -n "${topology}" ]] || { log_error "Topology cannot be empty"; return 1; }
+  case "${topology}" in
+    reality-only|vision-reality) return 0 ;;
+    *) log_error "Invalid topology: ${topology}. Must be 'reality-only' or 'vision-reality'"; return 1 ;;
+  esac
+}
+
+args::validate_domain() {
+  local domain="${1:-}"
+  [[ -z "${domain}" ]] && return 0
+  [[ "${domain}" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$ ]] || {
+    log_error "Invalid domain format: ${domain}"
+    return 1
+  }
+  case "${domain}" in
+    localhost|*.local|127.*|10.*|172.1[6-9].*|172.2[0-9].*|172.3[0-1].*|192.168.*)
+      log_error "Internal domain not allowed: ${domain}"
+      return 1
+      ;;
+  esac
+}
+
+args::validate_version() {
+  local version="${1:-}"
+  [[ -n "${version}" ]] || { log_error "Version cannot be empty"; return 1; }
+  [[ "${version}" == "latest" ]] && return 0
+  [[ "${version}" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+    log_error "Invalid version format: ${version}. Use 'latest' or 'vX.Y.Z'"
+    return 1
+  }
+}
+
+args::validate_config() {
+  if [[ "${TOPOLOGY}" == "vision-reality" && -z "${DOMAIN}" ]]; then
+    log_error "Vision-reality topology requires --domain parameter"
+    return 1
+  fi
+}
+
 # Show help
-show_help() {
+args::show_help() {
   cat << EOF
 xray-fusion online installer
 
 Usage:
-  curl -sL https://raw.githubusercontent.com/Joe-oss9527/xray-fusion/main/install.sh | bash
   curl -sL https://raw.githubusercontent.com/Joe-oss9527/xray-fusion/main/install.sh | bash -s -- [options]
 
 Options:
-  --topology <reality-only|vision-reality>  Installation topology (default: reality-only)
-  --version <version>                        Xray version to install (default: latest)
-  --enable-plugins <plugin1,plugin2>        Enable plugins after installation
-  --domain <domain>                          Set XRAY_DOMAIN for vision-reality topology
-  --proxy <proxy_url>                       Use proxy for downloads
-  --install-dir <path>                       Installation directory (default: /usr/local/xray-fusion)
-  --debug                                    Enable debug output
-  --help                                     Show this help
+  --topology, -t <type>         Installation topology (reality-only|vision-reality)
+  --domain, -d <domain>         Domain for vision-reality topology (required)
+  --version, -v <version>       Xray version to install (default: latest)
+  --plugins, -p <list>          Comma-separated list of plugins to enable
+  --proxy <url>                 Use proxy for downloads
+  --install-dir <path>          Installation directory (default: /usr/local/xray-fusion)
+  --debug                       Enable debug output
+  --help, -h                    Show this help
 
 Examples:
-  # Basic installation
-  curl -sL https://raw.githubusercontent.com/Joe-oss9527/xray-fusion/main/install.sh | bash
+  # Reality-only installation
+  curl -sL install.sh | bash -s -- --topology reality-only
 
-  # Vision-Reality with domain
-  curl -sL https://raw.githubusercontent.com/Joe-oss9527/xray-fusion/main/install.sh | bash -s -- \\
-    --topology vision-reality --domain your.domain.com --enable-plugins cert-auto
+  # Vision-Reality with domain and plugins
+  curl -sL install.sh | bash -s -- --topology vision-reality --domain your.domain.com --plugins cert-auto
 
-  # Alternative: Use environment variable (requires export)
-  export XRAY_DOMAIN=your.domain.com
-  curl -sL https://raw.githubusercontent.com/Joe-oss9527/xray-fusion/main/install.sh | bash -s -- \\
-    --topology vision-reality --enable-plugins cert-auto
+  # Specific version
+  curl -sL install.sh | bash -s -- --topology reality-only --version v1.8.1
 
 Environment Variables:
   XRF_REPO_URL      Repository URL (default: https://github.com/Joe-oss9527/xray-fusion.git)
   XRF_BRANCH        Branch to use (default: main)
   XRF_INSTALL_DIR   Installation directory (default: /usr/local/xray-fusion)
-  XRF_LOG_TARGET    Log target (file|journal) for logrotate-obs plugin
 
-  Xray Configuration (Reality-only topology):
+Xray Configuration Variables:
   XRAY_SNI          SNI domain (default: www.microsoft.com)
   XRAY_PORT         Listen port (default: 443)
   XRAY_UUID         User UUID (auto-generated if not set)
-  XRAY_*            All other Xray configuration variables (see README.md)
+  XRAY_*            All other Xray configuration variables
 
 EOF
+}
+ARGS_EOF
+
+  source "${TMP_DIR}/args.sh"
+}
+
+# Show help
+show_help() {
+  args::show_help
+}
+
+# Parse command line arguments
+parse_args() {
+  args::init
+
+  local rc=0
+  args::parse "$@" || rc=$?
+
+  if [[ ${rc} -eq 10 ]]; then
+    show_help
+    exit 0
+  elif [[ ${rc} -ne 0 ]]; then
+    show_help
+    exit 1
+  fi
+}
+
+# Setup environment from parsed arguments
+setup_environment() {
+  # Set XRAY_DOMAIN for Xray configuration
+  if [[ -n "${DOMAIN}" ]]; then
+    export XRAY_DOMAIN="${DOMAIN}"
+  fi
+
+  # Set debug mode
+  if [[ "${DEBUG}" == "true" ]]; then
+    export XRF_DEBUG="true"
+  fi
 }
 
 # Early validation (inspired by 233boy style)
@@ -125,9 +269,10 @@ check_system() {
 
   # Basic OS detection without strict validation
   if [[ -f /etc/os-release ]]; then
-    local ID VERSION_ID
-    . /etc/os-release
-    log_debug "检测到系统: ${ID} ${VERSION_ID:-unknown}"
+    # Load in subshell to avoid variable pollution
+    local os_info
+    os_info=$(source /etc/os-release 2>/dev/null && echo "${ID:-unknown} ${VERSION_ID:-unknown}")
+    log_debug "检测到系统: ${os_info}"
   else
     log_warn "无法检测操作系统版本，继续安装..."
   fi
@@ -256,6 +401,7 @@ install_xray_fusion() {
   log_info "xray-fusion installed successfully"
 }
 
+# Cleanup partial installation
 cleanup_partial_installation() {
   log_warn "Cleaning up partial installation"
 
@@ -279,35 +425,24 @@ cleanup_partial_installation() {
   fi
 }
 
-# Enable plugins
-enable_plugins() {
-  if [[ -n "${ENABLE_PLUGINS}" ]]; then
-    log_info "Enabling plugins: ${ENABLE_PLUGINS}"
-
-    # Split plugins by comma
-    IFS=',' read -ra PLUGINS <<< "${ENABLE_PLUGINS}"
-    for plugin in "${PLUGINS[@]}"; do
-      plugin="$(echo "${plugin}" | xargs)" # trim whitespace
-      if "${INSTALL_DIR}/bin/xrf" plugin enable "${plugin}"; then
-        log_info "Enabled plugin: ${plugin}"
-      else
-        log_warn "Failed to enable plugin: ${plugin}"
-      fi
-    done
-  fi
-}
-
 # Run xray installation
 run_xray_install() {
   log_info "Installing Xray with topology: ${TOPOLOGY}"
 
   local install_args=("--topology" "${TOPOLOGY}")
 
-  if [[ "${XRAY_VERSION_REQ}" != "latest" ]]; then
-    install_args+=("--version" "${XRAY_VERSION_REQ}")
+  if [[ -n "${DOMAIN}" ]]; then
+    install_args+=("--domain" "${DOMAIN}")
   fi
 
-  # Set debug mode if enabled
+  if [[ "${VERSION}" != "latest" ]]; then
+    install_args+=("--version" "${VERSION}")
+  fi
+
+  if [[ -n "${PLUGINS}" ]]; then
+    install_args+=("--plugins" "${PLUGINS}")
+  fi
+
   if [[ "${DEBUG}" == "true" ]]; then
     install_args+=("--debug")
   fi
@@ -315,23 +450,8 @@ run_xray_install() {
   # Change to installation directory
   cd "${INSTALL_DIR}"
 
-  # Run installation with environment variables preserved
-  if env XRAY_DOMAIN="${XRAY_DOMAIN:-}" \
-         XRAY_SNI="${XRAY_SNI:-}" \
-         XRAY_PORT="${XRAY_PORT:-}" \
-         XRAY_UUID="${XRAY_UUID:-}" \
-         XRAY_VISION_PORT="${XRAY_VISION_PORT:-}" \
-         XRAY_REALITY_PORT="${XRAY_REALITY_PORT:-}" \
-         XRAY_FALLBACK_PORT="${XRAY_FALLBACK_PORT:-}" \
-         XRAY_UUID_VISION="${XRAY_UUID_VISION:-}" \
-         XRAY_UUID_REALITY="${XRAY_UUID_REALITY:-}" \
-         XRAY_CERT_DIR="${XRAY_CERT_DIR:-}" \
-         XRAY_PRIVATE_KEY="${XRAY_PRIVATE_KEY:-}" \
-         XRAY_SHORT_ID="${XRAY_SHORT_ID:-}" \
-         XRAY_SNIFFING="${XRAY_SNIFFING:-}" \
-         XRAY_REALITY_DEST="${XRAY_REALITY_DEST:-}" \
-         XRF_DEBUG="${DEBUG:-}" \
-         "./bin/xrf" install "${install_args[@]}"; then
+  # Run installation with unified arguments
+  if "./bin/xrf" install "${install_args[@]}"; then
     log_info "Xray installation completed successfully"
     [[ -n "${INSTALL_MARKER}" && -f "${INSTALL_MARKER}" ]] && rm -f "${INSTALL_MARKER}"
     INSTALL_MARKER=""
@@ -373,69 +493,14 @@ validate_installation() {
   log_debug "Installation validation completed"
 }
 
-# Parse command line arguments
-parse_args() {
-  while [[ $# -gt 0 ]]; do
-    case ${1} in
-      --topology)
-        TOPOLOGY="${2}"
-        if [[ "${TOPOLOGY}" != "reality-only" && "${TOPOLOGY}" != "vision-reality" ]]; then
-          error_exit "Invalid topology: ${TOPOLOGY}. Must be 'reality-only' or 'vision-reality'."
-        fi
-        shift 2
-        ;;
-      --version)
-        XRAY_VERSION_REQ="${2}"
-        shift 2
-        ;;
-      --enable-plugins)
-        ENABLE_PLUGINS="${2}"
-        shift 2
-        ;;
-      --proxy)
-        PROXY="${2}"
-        shift 2
-        ;;
-      --install-dir)
-        INSTALL_DIR="${2}"
-        shift 2
-        ;;
-      --debug)
-        DEBUG="true"
-        shift
-        ;;
-      --domain)
-        export XRAY_DOMAIN="${2}"
-        shift 2
-        ;;
-      --help | -h)
-        show_help
-        exit 0
-        ;;
-      *)
-        log_warn "Unknown option: ${1}"
-        shift
-        ;;
-    esac
-  done
-}
-
-# Handle environment variable compatibility
-setup_environment() {
-  # Support common port variable aliases
-  if [[ -n "${XRAY_PORT:-}" && -z "${XRAY_REALITY_PORT:-}" ]]; then
-    export XRAY_REALITY_PORT="${XRAY_PORT}"
-    log_debug "使用 XRAY_PORT 设置 XRAY_REALITY_PORT=${XRAY_REALITY_PORT}"
-  fi
-}
-
 # Show installation summary
 show_summary() {
   log_info "Installation Summary:"
   echo "  Topology: ${TOPOLOGY}"
-  echo "  Version: ${XRAY_VERSION_REQ}"
+  echo "  Version: ${VERSION}"
   echo "  Install Directory: ${INSTALL_DIR}"
-  [[ -n "${ENABLE_PLUGINS}" ]] && echo "  Enabled Plugins: ${ENABLE_PLUGINS}"
+  [[ -n "${DOMAIN}" ]] && echo "  Domain: ${DOMAIN}"
+  [[ -n "${PLUGINS}" ]] && echo "  Enabled Plugins: ${PLUGINS}"
   [[ -n "${XRAY_SNI:-}" ]] && echo "  Custom SNI: ${XRAY_SNI}"
   [[ -n "${XRAY_PORT:-}" ]] && echo "  Custom Port: ${XRAY_PORT}"
   echo ""
@@ -462,12 +527,16 @@ EOF
   echo "                    Xray Fusion - One-Click Installer"
   echo ""
 
+  # Download and setup args module first
+  TMP_DIR="$(mktemp -d)"
+  source_args_module
+
   parse_args "${@}"
 
   # Run early checks first
   early_checks
 
-  # Setup environment variable compatibility
+  # Setup environment from parsed arguments
   setup_environment
 
   # Continue with installation steps
@@ -475,7 +544,6 @@ EOF
   install_dependencies
   download_project
   install_xray_fusion
-  enable_plugins
   run_xray_install
   show_summary
 

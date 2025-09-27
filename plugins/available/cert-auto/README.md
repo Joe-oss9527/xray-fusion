@@ -13,12 +13,12 @@
 
 ```bash
 # 启用插件并安装 vision-reality 拓扑
-XRAY_DOMAIN=your.domain.com ./install.sh --topology vision-reality --enable-plugins cert-auto
+./install.sh --topology vision-reality --domain your.domain.com --plugins cert-auto
 ```
 
-## 环境变量
+## 配置
 
-- `XRAY_DOMAIN`: 你拥有的域名（必需）
+- 域名（必需）：通过 `--domain` 参数指定
 - `XRAY_VISION_PORT`: Vision 端口（默认 8443）
 
 ## 原理

@@ -41,7 +41,7 @@ cert_auto::configure_pre() {
 
   local domain="${XRAY_DOMAIN:-}"
   [[ -n "${domain}" ]] || {
-    core::log error "cert-auto requires XRAY_DOMAIN environment variable for vision-reality topology" "$(printf '{"example":"XRAY_DOMAIN=your-domain.com bin/xrf install --topology vision-reality"}')"
+    core::log error "cert-auto requires domain for vision-reality topology" "$(printf '{"example":"bin/xrf install --topology vision-reality --domain your-domain.com --plugins cert-auto"}')"
     return 1
   }
 

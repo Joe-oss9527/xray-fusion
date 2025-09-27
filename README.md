@@ -7,10 +7,10 @@
 ### 一键安装
 ```bash
 # Reality-only 模式（推荐）
-curl -sL https://github.com/Joe-oss9527/xray-fusion/raw/main/install.sh | bash
+curl -sL https://github.com/Joe-oss9527/xray-fusion/raw/main/install.sh | bash -s -- --topology reality-only
 
 # Vision + Reality 双模式（需要域名）
-curl -sL https://github.com/Joe-oss9527/xray-fusion/raw/main/install.sh | bash -s -- --topology vision-reality --domain your.domain.com --enable-plugins cert-auto
+curl -sL https://github.com/Joe-oss9527/xray-fusion/raw/main/install.sh | bash -s -- --topology vision-reality --domain your.domain.com --plugins cert-auto
 ```
 
 ### 一键卸载
@@ -40,8 +40,8 @@ cd xray-fusion
 # 安装 Reality-only
 bin/xrf install --topology reality-only
 
-# 安装 Vision-Reality（设置环境变量）
-XRAY_DOMAIN=example.com bin/xrf install --topology vision-reality --enable-plugins cert-auto
+# 安装 Vision-Reality（需要域名）
+bin/xrf install --topology vision-reality --domain your.domain.com --plugins cert-auto
 
 # 查看连接信息
 bin/xrf links
