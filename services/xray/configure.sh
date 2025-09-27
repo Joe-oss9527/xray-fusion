@@ -139,7 +139,8 @@ JSON
   plugins::emit configure_post "topology=${topology}" "release_dir=${d}"
 
   core::log debug "render_release complete" "$(printf '{"release_dir":"%s"}' "${d}")"
-  echo "${d}"
+  # 确保输出目录路径到 stdout，而不是 stderr
+  printf '%s\n' "${d}"
 }
 
 deploy_release() {

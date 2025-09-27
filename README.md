@@ -19,12 +19,11 @@
 curl -sL https://raw.githubusercontent.com/Joe-oss9527/xray-fusion/main/install.sh | bash
 ```
 
-### 自定义域名和端口安装
+### 自定义 SNI 域名安装
 ```bash
-# 使用自定义域名和端口
-XRAY_SNI=your.domain.com XRAY_PORT=8443 \
+# Reality-only 拓扑，自定义 SNI 伪装域名
+XRAY_SNI=your.domain.com \
 curl -sL https://raw.githubusercontent.com/Joe-oss9527/xray-fusion/main/install.sh | bash
-
 ```
 
 ### 高级安装
@@ -75,23 +74,37 @@ bin/xrf install --topology reality-only
 bin/xrf links
 ```
 
-### Vision + Reality（带证书）
+## 拓扑说明
+
+### Reality-only 拓扑
+- **用途**：隐蔽性最强，无需域名所有权
+- **端口**：443（标准 HTTPS 端口）
+- **特点**：SNI 伪装，流量特征与目标网站相同
+
+### Vision-Reality 拓扑
+- **用途**：双重保护，Vision 提供域名 TLS，Reality 提供备用连接
+- **端口**：Vision 8443，Reality 443
+- **特点**：需要域名所有权，自动证书管理
+
 ```bash
-XRAY_DOMAIN="your.domain.com" ./install.sh --topology vision-reality --enable-plugins cert-auto
+# Vision + Reality 拓扑示例
+XRAY_DOMAIN="your.domain.com" \
+curl -sL https://raw.githubusercontent.com/Joe-oss9527/xray-fusion/main/install.sh | bash -s -- \
+  --topology vision-reality --enable-plugins cert-auto
 ```
 
-### 文件日志 + logrotate（推荐生产）
+### 启用日志轮转（推荐生产）
 ```bash
+# 启用文件日志和自动轮转
 bin/xrf plugin enable logrotate-obs
 XRF_LOG_TARGET=file bin/xrf install --topology reality-only
-# /var/log/xray/{error.log,access.log}；/etc/logrotate.d/xray-fusion
 ```
 
 ## 目录结构
 ```
 bin/xrf
 lib/{core.sh,plugins.sh}
-modules/{io.sh,state.sh,net/network.sh,fw/*,cert/*,user/user.sh}
+modules/{io.sh,state.sh,net/network.sh,fw/*,web/caddy.sh,user/user.sh}
 services/xray/{common.sh,install.sh,configure.sh,systemd-unit.sh,client-links.sh}
 commands/{install.sh,status.sh,uninstall.sh,plugin.sh}
 packaging/systemd/xray.service
@@ -99,32 +112,35 @@ plugins/available/{cert-auto,firewall,links-qr,logrotate-obs}/plugin.sh
 plugins/enabled/   # 启用=这里建软链
 ```
 
-> 仅 systemd；无 OpenRC/CI/Tests 等非运行时必需组件，**去冗余**、**降复杂度**。配置片段合并遵循 Xray 官方语义：对象“后读覆盖”、数组“后读追加”。Reality 强制 `flow: "xtls-rprx-vision"`。
+> **架构原则**：仅 systemd；无 OpenRC/CI/Tests 等非运行时必需组件，**去冗余**、**降复杂度**。配置片段合并遵循 Xray 官方语义：对象"后读覆盖"、数组"后读追加"。
+>
+> **重要概念**：VLESS+REALITY 协议**无需域名所有权**，SNI 域名仅用于 TLS 握手伪装。例如 `XRAY_SNI=www.microsoft.com` 是合法配置，无需拥有该域名。
 
 ## 环境变量配置
 
 ### Xray 配置变量
 ```bash
-# Reality-only 拓扑
-export XRAY_PORT=443                    # 监听端口
+# Reality-only 拓扑（推荐配置）
+export XRAY_PORT=443                    # 监听端口（默认 443）
 export XRAY_UUID=<uuid>                 # 用户 UUID（自动生成）
-export XRAY_SNI=www.microsoft.com       # SNI 域名
-export XRAY_REALITY_DEST=www.microsoft.com:443  # 目标地址
+export XRAY_SNI=www.microsoft.com       # SNI 伪装域名（无需拥有）
+export XRAY_REALITY_DEST=www.microsoft.com:443  # 目标地址（自动推导）
 export XRAY_PRIVATE_KEY=<X25519>        # 私钥（自动生成）
 export XRAY_SHORT_ID=<hex>              # Short ID（自动生成）
 
-# Vision + Reality 拓扑
-export XRAY_VISION_PORT=8443            # Vision 端口
-export XRAY_REALITY_PORT=443            # Reality 端口
+# Vision-Reality 拓扑（需要域名所有权）
+export XRAY_VISION_PORT=8443            # Vision 端口（TLS 真实连接）
+export XRAY_REALITY_PORT=443            # Reality 端口（伪装连接）
 export XRAY_FALLBACK_PORT=8080          # 回落端口
-export XRAY_UUID_VISION=<uuid>          # Vision UUID
-export XRAY_UUID_REALITY=<uuid>         # Reality UUID
-export XRAY_DOMAIN=example.com          # 域名
+export XRAY_UUID_VISION=<uuid>          # Vision UUID（自动生成）
+export XRAY_UUID_REALITY=<uuid>         # Reality UUID（自动生成）
+export XRAY_DOMAIN=example.com          # 真实拥有的域名
 export XRAY_CERT_DIR=/usr/local/etc/xray/certs  # 证书目录
 
-# 其他配置
-export XRAY_SNIFFING=false              # 启用嗅探
-export XRF_LOG_TARGET=file              # 日志目标 (file|journal)
+# 通用配置
+export XRAY_SNIFFING=false              # 流量嗅探（默认关闭）
+export XRF_LOG_TARGET=journal           # 日志目标 (journal|file)
+export XRF_DEBUG=false                  # 调试模式（--debug 启用）
 ```
 
 ### 安装脚本变量
@@ -136,34 +152,32 @@ export XRF_INSTALL_DIR=/usr/local/xray-fusion  # 安装目录
 
 ## 常见问题
 
-### 安装失败怎么办？
-1. 检查网络连接和防火墙
-2. 使用代理：`--proxy http://127.0.0.1:1080`
-3. 启用调试：`--debug` 查看详细信息
-4. 手动下载项目后本地安装
+### 如何选择拓扑？
+- **Reality-only**：推荐，无需域名所有权，隐蔽性最强
+- **Vision-Reality**：需要域名，提供双重连接选项
 
-### 如何自定义域名？
+### 安装问题排查
 ```bash
-XRAY_SNI=your.domain.com curl -sL https://raw.githubusercontent.com/Joe-oss9527/xray-fusion/main/install.sh | bash
+# 启用调试模式查看详细信息
+curl -sL https://raw.githubusercontent.com/Joe-oss9527/xray-fusion/main/install.sh | bash -s -- --debug
+
+# 使用代理下载
+curl -sL https://raw.githubusercontent.com/Joe-oss9527/xray-fusion/main/install.sh | bash -s -- --proxy http://127.0.0.1:1080
 ```
 
-### 卸载不干净怎么办？
+### 管理操作
 ```bash
-# 使用彻底卸载选项
-curl -sL https://raw.githubusercontent.com/Joe-oss9527/xray-fusion/main/uninstall.sh | bash -s -- --remove-install-dir --debug
-```
-
-### 如何更新？
-```bash
-# 重新运行安装脚本即可
+# 更新到最新版本
 curl -sL https://raw.githubusercontent.com/Joe-oss9527/xray-fusion/main/install.sh | bash
-```
 
-### 如何备份配置？
-```bash
-# 备份状态和配置
-sudo cp -r /usr/local/etc/xray /backup/
-sudo cp /usr/local/xray-fusion/state.json /backup/
+# 彻底卸载
+curl -sL https://raw.githubusercontent.com/Joe-oss9527/xray-fusion/main/uninstall.sh | bash -s -- --remove-install-dir
+
+# 查看连接信息
+bin/xrf links
+
+# 查看运行状态
+bin/xrf status
 ```
 
 ## Lint & 格式化

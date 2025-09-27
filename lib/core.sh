@@ -29,10 +29,17 @@ core::log() {
   local msg="${1}"
   shift || true
   local ctx="${1-{} }"
+
+  # Filter debug messages unless XRF_DEBUG is true
+  if [[ "${lvl}" == "debug" && "${XRF_DEBUG}" != "true" ]]; then
+    return 0
+  fi
+
+  # All logs go to stderr to avoid contaminating function outputs
   if [[ "${XRF_JSON}" == "true" ]]; then
-    printf '{"ts":"%s","level":"%s","msg":"%s","ctx":%s}\n' "$(core::ts)" "${lvl}" "${msg}" "${ctx}"
+    printf '{"ts":"%s","level":"%s","msg":"%s","ctx":%s}\n' "$(core::ts)" "${lvl}" "${msg}" "${ctx}" >&2
   else
-    printf '[%s] %-5s %s %s\n' "$(core::ts)" "${lvl}" "${msg}" "${ctx}"
+    printf '[%s] %-5s %s %s\n' "$(core::ts)" "${lvl}" "${msg}" "${ctx}" >&2
   fi
 }
 

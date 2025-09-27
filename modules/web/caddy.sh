@@ -94,15 +94,19 @@ caddy::setup_auto_tls() {
   io::ensure_dir "$(caddy::config_dir)" 0755
   io::ensure_dir "$(caddy::cert_dir)" 0755
 
-  # 创建简单的 Caddyfile 配置 - Caddy 会自动处理 HTTPS
+  # 创建 Caddyfile 配置 - Caddy 作为 fallback 服务，不占用 443
   cat > "$(caddy::config_file)" << EOF
 {
   admin off
   http_port 80
-  https_port 443
+  https_port 8444
 }
 
-${domain} {
+:8080 {
+  respond "404 - Page Not Found" 404
+}
+
+${domain}:8444 {
   reverse_proxy 127.0.0.1:${xray_port}
 }
 EOF
@@ -168,7 +172,7 @@ for cert_dir in "\${CADDY_CERT_DIR}"/*/; do
       cp "\${cert_files[0]}" "\${XRAY_CERT_DIR}/fullchain.pem"
       cp "\${cert_files[1]}" "\${XRAY_CERT_DIR}/privkey.pem"
       chmod 644 "\${XRAY_CERT_DIR}/fullchain.pem"
-      chmod 600 "\${XRAY_CERT_DIR}/privkey.pem"
+      chmod 640 "\${XRAY_CERT_DIR}/privkey.pem"
       chown root:xray "\${XRAY_CERT_DIR}"/*.pem 2>/dev/null || true
       echo "[caddy-cert-sync] certificates updated for \${DOMAIN}"
       exit 0

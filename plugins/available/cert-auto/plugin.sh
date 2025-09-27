@@ -73,7 +73,7 @@ cert_auto::service_setup() {
 
   # 设置证书文件权限
   chown root:xray "${cert_dir}/privkey.pem" "${cert_dir}/fullchain.pem" 2> /dev/null || true
-  chmod 600 "${cert_dir}/privkey.pem" || true
+  chmod 640 "${cert_dir}/privkey.pem" || true
   chmod 644 "${cert_dir}/fullchain.pem" || true
 
   core::log info "cert-auto certificate permissions set" "$(printf '{"cert_dir":"%s"}' "${cert_dir}")"
