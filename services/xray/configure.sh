@@ -149,9 +149,13 @@ deploy_release() {
   if [[ -x "$(xray::bin)" && "${XRF_SKIP_XRAY_TEST:-false}" != "true" ]]; then
     core::log debug "testing xray config" "$(printf '{"confdir":"%s","xray_bin":"%s"}' "${d}" "$(xray::bin)")"
 
-    # 显示配置文件内容以供调试
+    # 验证配置文件存在且可读
     for f in "${d}"/*.json; do
-      core::log debug "config file content" "$(printf '{"file":"%s","content":"%s"}' "${f}" "$(cat "${f}" | tr '\n' ' ')")"
+      if [[ -f "${f}" ]]; then
+        core::log debug "config file found" "$(printf '{"file":"%s","size":"%d"}' "${f}" "$(wc -c < "${f}")")"
+      else
+        core::log error "config file missing" "$(printf '{"file":"%s"}' "${f}")"
+      fi
     done
 
     local test_output
