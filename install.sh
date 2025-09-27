@@ -79,59 +79,58 @@ Environment Variables:
   XRF_BRANCH        Branch to use (default: main)
   XRF_INSTALL_DIR   Installation directory (default: /usr/local/xray-fusion)
   XRF_LOG_TARGET    Log target (file|journal) for logrotate-obs plugin
-  XRAY_*            All Xray configuration variables (see README.md)
+
+  Xray Configuration (Reality-only topology):
+  XRAY_REALITY_SNI  SNI domain (default: www.microsoft.com)
+  XRAY_SNI          Alias for XRAY_REALITY_SNI (for compatibility)
+  XRAY_PORT         Listen port (default: 443)
+  XRAY_UUID         User UUID (auto-generated if not set)
+  XRAY_*            All other Xray configuration variables (see README.md)
 
 EOF
 }
 
-# System checks
-check_system() {
-    log_info "Checking system requirements..."
-
+# Early validation (inspired by 233boy style)
+early_checks() {
     # Check if running as root
-    if [[ ${EUID} -ne 0 ]]; then
-        error_exit "This script must be run as root. Please use sudo."
-    fi
+    [[ ${EUID} -ne 0 ]] && error_exit "当前非 ROOT用户，请使用 sudo 运行此脚本"
 
-    # Check OS support
-    if [[ ! -f /etc/os-release ]]; then
-        error_exit "Cannot determine OS. /etc/os-release not found."
-    fi
-
-    local ID VERSION VERSION_ID
-    . /etc/os-release
-    case "${ID}" in
-        ubuntu|debian|centos|rhel|fedora|rocky|almalinux)
-            log_debug "Detected supported OS: ${ID} ${VERSION_ID}"
-            ;;
-        *)
-            log_warn "Untested OS: ${ID} ${VERSION_ID}. Proceeding anyway..."
-            ;;
-    esac
-
-    # Check architecture
-    local arch
-    arch="$(uname -m)"
-    case "${arch}" in
-        x86_64|amd64|aarch64|arm64)
-            log_debug "Detected supported architecture: ${arch}"
-            ;;
-        *)
-            error_exit "Unsupported architecture: ${arch}. Only x86_64/amd64 and aarch64/arm64 are supported."
-            ;;
-    esac
+    # Check package manager (apt-get or yum)
+    local cmd
+    cmd=$(type -P apt-get || type -P yum || type -P dnf)
+    [[ ! $cmd ]] && error_exit "此脚本仅支持 Ubuntu/Debian/CentOS/RHEL 系统"
 
     # Check systemd
-    if ! command -v systemctl >/dev/null 2>&1; then
-        error_exit "systemd is required but not found. Please install systemd."
+    [[ ! $(type -P systemctl) ]] && error_exit "此系统缺少 systemctl，请安装 systemd"
+
+    # Check architecture (simplified)
+    case $(uname -m) in
+        x86_64|amd64|aarch64|arm64) ;;
+        *) error_exit "此脚本仅支持 64 位系统" ;;
+    esac
+
+    log_info "基础环境检查通过"
+}
+
+# System checks (simplified)
+check_system() {
+    log_info "检查系统要求..."
+
+    # Basic OS detection without strict validation
+    if [[ -f /etc/os-release ]]; then
+        local ID VERSION_ID
+        . /etc/os-release
+        log_debug "检测到系统: ${ID} ${VERSION_ID:-unknown}"
+    else
+        log_warn "无法检测操作系统版本，继续安装..."
     fi
 
-    log_info "System requirements check passed"
+    log_info "系统检查完成"
 }
 
 # Install dependencies
 install_dependencies() {
-    log_info "Installing dependencies..."
+    log_info "安装依赖包..."
 
     local deps="curl wget git jq unzip openssl"
     local missing_deps=""
@@ -145,8 +144,10 @@ install_dependencies() {
     elif command -v dnf >/dev/null 2>&1; then
         pkg_manager="dnf"
     else
-        error_exit "No supported package manager found (apt/yum/dnf)"
+        error_exit "未找到支持的包管理器 (apt/yum/dnf)"
     fi
+
+    log_debug "检测到包管理器: ${pkg_manager}"
 
     # Check for missing dependencies
     for dep in ${deps}; do
@@ -157,45 +158,54 @@ install_dependencies() {
 
     # Install missing dependencies
     if [[ -n "${missing_deps}" ]]; then
-        log_info "Installing missing dependencies:${missing_deps}"
+        log_info "安装缺少的依赖包:${missing_deps}"
         case "${pkg_manager}" in
             apt)
-                apt-get update -qq
-                apt-get install -y ${missing_deps}
+                apt-get update -qq || log_warn "apt-get update 失败，继续安装..."
+                apt-get install -y ${missing_deps} || error_exit "依赖包安装失败"
                 ;;
             yum)
-                yum install -y epel-release || true
-                yum install -y ${missing_deps}
+                yum install -y epel-release || log_warn "epel-release 安装失败，继续..."
+                yum install -y ${missing_deps} || error_exit "依赖包安装失败"
                 ;;
             dnf)
-                dnf install -y ${missing_deps}
+                dnf install -y ${missing_deps} || error_exit "依赖包安装失败"
                 ;;
         esac
+        log_info "依赖包安装完成"
     else
-        log_info "All dependencies are already installed"
+        log_info "所有依赖包已安装"
     fi
 }
 
 # Download xray-fusion
 download_project() {
-    log_info "Downloading xray-fusion from ${REPO_URL} (branch: ${BRANCH})..."
+    log_info "从 ${REPO_URL} 下载 xray-fusion (分支: ${BRANCH})..."
 
     TMP_DIR="$(mktemp -d)"
-    log_debug "Using temporary directory: ${TMP_DIR}"
+    log_debug "使用临时目录: ${TMP_DIR}"
 
     # Set proxy if specified
     if [[ -n "${PROXY}" ]]; then
         export https_proxy="${PROXY}"
         export http_proxy="${PROXY}"
-        log_info "Using proxy: ${PROXY}"
+        log_info "使用代理: ${PROXY}"
     fi
 
-    # Clone repository
-    if ! git clone --depth 1 --branch "${BRANCH}" "${REPO_URL}" "${TMP_DIR}/xray-fusion"; then
-        error_exit "Failed to download xray-fusion from ${REPO_URL}"
+    # Clone repository with better error handling
+    log_debug "开始克隆仓库..."
+    if ! git clone --depth 1 --branch "${BRANCH}" "${REPO_URL}" "${TMP_DIR}/xray-fusion" 2>/dev/null; then
+        log_error "从 ${REPO_URL} 下载失败"
+        log_info "请检查网络连接或尝试使用代理"
+        error_exit "下载失败"
     fi
 
-    log_info "Download completed"
+    # Verify download
+    if [[ ! -d "${TMP_DIR}/xray-fusion" ]] || [[ ! -f "${TMP_DIR}/xray-fusion/bin/xrf" ]]; then
+        error_exit "下载的文件不完整或损坏"
+    fi
+
+    log_info "下载完成"
 }
 
 # Install xray-fusion
@@ -381,6 +391,21 @@ parse_args() {
     done
 }
 
+# Handle environment variable compatibility
+setup_environment() {
+    # Support common domain variable aliases
+    if [[ -n "${XRAY_SNI:-}" && -z "${XRAY_REALITY_SNI:-}" ]]; then
+        export XRAY_REALITY_SNI="${XRAY_SNI}"
+        log_debug "使用 XRAY_SNI 设置 XRAY_REALITY_SNI=${XRAY_REALITY_SNI}"
+    fi
+
+    # Support common port variable aliases
+    if [[ -n "${XRAY_PORT:-}" && -z "${XRAY_REALITY_PORT:-}" ]]; then
+        export XRAY_REALITY_PORT="${XRAY_PORT}"
+        log_debug "使用 XRAY_PORT 设置 XRAY_REALITY_PORT=${XRAY_REALITY_PORT}"
+    fi
+}
+
 # Show installation summary
 show_summary() {
     log_info "Installation Summary:"
@@ -388,6 +413,8 @@ show_summary() {
     echo "  Version: ${XRAY_VERSION_REQ}"
     echo "  Install Directory: ${INSTALL_DIR}"
     [[ -n "${ENABLE_PLUGINS}" ]] && echo "  Enabled Plugins: ${ENABLE_PLUGINS}"
+    [[ -n "${XRAY_REALITY_SNI:-}" ]] && echo "  Custom SNI: ${XRAY_REALITY_SNI}"
+    [[ -n "${XRAY_PORT:-}" ]] && echo "  Custom Port: ${XRAY_PORT}"
     echo ""
     log_info "Next steps:"
     echo "  1. Check status: xrf status"
@@ -413,6 +440,14 @@ EOF
     echo ""
 
     parse_args "${@}"
+
+    # Run early checks first
+    early_checks
+
+    # Setup environment variable compatibility
+    setup_environment
+
+    # Continue with installation steps
     check_system
     install_dependencies
     download_project
@@ -421,7 +456,7 @@ EOF
     run_xray_install
     show_summary
 
-    log_info "Installation completed successfully!"
+    log_info "安装完成！"
 }
 
 # Run main function with all arguments
