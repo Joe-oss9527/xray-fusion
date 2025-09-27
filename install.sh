@@ -33,7 +33,7 @@ INSTALL_MARKER=""
 log_info() { echo -e "${GREEN}[INFO]${NC} ${*}"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} ${*}"; }
 log_error() { echo -e "${RED}[ERROR]${NC} ${*}"; }
-log_debug() { [[ "${DEBUG}" == "true" ]] && echo -e "${BLUE}[DEBUG]${NC} ${*}"; }
+log_debug() { [[ "${DEBUG}" == "true" ]] && echo -e "${BLUE}[DEBUG]${NC} ${*}" || true; }
 
 # Error handling
 error_exit() {
