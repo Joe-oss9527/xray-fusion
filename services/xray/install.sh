@@ -24,12 +24,26 @@ xray::install() {
       ;;
   esac
 
+  # Security: Validate version parameter format
+  if [[ "${version}" != "latest" ]]; then
+    if [[ ! "${version}" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+      core::log error "invalid version format" "$(printf '{"version":"%s"}' "${version}")"
+      exit 1
+    fi
+  fi
+
   if [[ "${version}" == "latest" ]]; then
     version=$(curl -fsSL https://api.github.com/repos/XTLS/Xray-core/releases/latest | grep -o '"tag_name":[[:space:]]*"[^"]*"' | cut -d'"' -f4)
     [[ -n "${version}" && "${version}" != "null" ]] || {
       core::log error "resolve latest failed" "{}"
       exit 1
     }
+
+    # Security: Validate resolved version format
+    if [[ ! "${version}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+      core::log error "invalid resolved version format" "$(printf '{"version":"%s"}' "${version}")"
+      exit 1
+    fi
   fi
   [[ "${version}" =~ ^v ]] || version="v${version}"
 
@@ -44,10 +58,17 @@ xray::install() {
   if [[ -z "${sha}" ]]; then
     sha="$(curl -fsSL "${url}.dgst" 2> /dev/null | awk 'match($0,/^SHA2?-?256[= ] *([0-9A-Fa-f]{64})/,m){print m[1]; exit} match($0,/^SHA256 \([^)]+\) = ([0-9A-Fa-f]{64})/,m){print m[1]; exit} match($0,/^([0-9A-Fa-f]{64})[[:space:]]+/,m){print m[1]; exit}')" || true
   fi
-  [[ -n "${sha}" ]] || {
+
+  # Security: Validate SHA256 format regardless of source
+  if [[ -n "${sha}" ]]; then
+    if [[ ! "${sha}" =~ ^[0-9A-Fa-f]{64}$ ]]; then
+      core::log error "invalid SHA256 format" "$(printf '{"sha256":"%s"}' "${sha}")"
+      exit 5
+    fi
+  else
     core::log error "missing SHA256 (set XRAY_SHA256 to override)" "{}"
     exit 5
-  }
+  fi
   got="$(sha256sum "${tmp}/xray.zip" | awk '{print $1}')"
   [[ "${got}" == "${sha}" ]] || {
     core::log error "SHA256 mismatch" "$(printf '{"expected":"%s","got":"%s"}' "${sha}" "${got}")"

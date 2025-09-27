@@ -23,13 +23,22 @@ uninstall_caddy() {
     systemctl disable caddy || true
   fi
 
+  # Stop cert-sync timer and service if running
+  systemctl stop caddy-cert-sync.timer 2> /dev/null || true
+  systemctl stop caddy-cert-sync.service 2> /dev/null || true
+  systemctl disable caddy-cert-sync.timer 2> /dev/null || true
+  systemctl disable caddy-cert-sync.service 2> /dev/null || true
+
   # Remove Caddy systemd service
   _rm "/etc/systemd/system/caddy.service"
   _rm "/etc/systemd/system/caddy-cert-sync.service"
   _rm "/etc/systemd/system/caddy-cert-sync.timer"
 
-  # Reload systemd daemon
+  # Reload systemd daemon and reset failed states
   systemctl daemon-reload || true
+  systemctl reset-failed caddy.service 2> /dev/null || true
+  systemctl reset-failed caddy-cert-sync.service 2> /dev/null || true
+  systemctl reset-failed caddy-cert-sync.timer 2> /dev/null || true
 
   # Remove Caddy binary and config
   _rm "/usr/local/bin/caddy"

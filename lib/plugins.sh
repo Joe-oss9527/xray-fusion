@@ -14,6 +14,25 @@ plugins::dir_available() { echo "$(plugins::base)/available"; }
 plugins::dir_enabled() { echo "$(plugins::base)/enabled"; }
 plugins::ensure_dirs() { mkdir -p "$(plugins::dir_available)" "$(plugins::dir_enabled)"; }
 
+# Security: Validate plugin ID to prevent path traversal attacks
+plugins::validate_id() {
+  local id="${1:?id}"
+
+  # Check for valid characters only
+  if [[ ! "${id}" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+    echo "invalid plugin id: ${id}" >&2
+    return 1
+  fi
+
+  # Check for path traversal patterns
+  if [[ "${id}" =~ \.\.|\/ ]]; then
+    echo "invalid plugin id contains path traversal: ${id}" >&2
+    return 1
+  fi
+
+  return 0
+}
+
 # Load
 declare -ag __PLUG_IDS=()
 declare -Ag __PLUG_META=()
@@ -86,20 +105,44 @@ plugins::list() {
 
 plugins::enable() {
   local id="${1:?id}"
-  local src="$(plugins::dir_available)/${id}/plugin.sh"
-  local dst="$(plugins::dir_enabled)/${id}.sh"
-  [[ -f "${src}" ]] || {
-    echo "plugin not found: ${id}"
+
+  # Validate plugin ID for security
+  plugins::validate_id "${id}" || return 2
+
+  local src dst
+  src="$(plugins::dir_available)/${id}/plugin.sh"
+  dst="$(plugins::dir_enabled)/${id}.sh"
+
+  # Check if plugin exists
+  if [[ ! -f "${src}" ]]; then
+    echo "plugin not found: ${id}" >&2
     return 2
-  }
+  fi
+
+  # Security: Verify plugin is within expected directory
+  local av_dir real_src real_av_dir
+  av_dir="$(plugins::dir_available)"
+  real_src="$(realpath "${src}" 2> /dev/null || echo "")"
+  real_av_dir="$(realpath "${av_dir}" 2> /dev/null || echo "")"
+
+  if [[ -z "${real_src}" || -z "${real_av_dir}" ]] || [[ ! "${real_src}" =~ ^"${real_av_dir}"/ ]]; then
+    echo "plugin source validation failed: ${id}" >&2
+    return 2
+  fi
+
   ln -sfn "../available/${id}/plugin.sh" "${dst}"
   echo "enabled: ${id}"
 }
 plugins::disable() {
   local id="${1:?id}"
-  local dst="$(plugins::dir_enabled)/${id}.sh"
+
+  # Validate plugin ID for security
+  plugins::validate_id "${id}" || return 2
+
+  local dst
+  dst="$(plugins::dir_enabled)/${id}.sh"
   [[ -e "${dst}" ]] || {
-    echo "plugin not enabled: ${id}"
+    echo "plugin not enabled: ${id}" >&2
     return 2
   }
   rm -f "${dst}"
@@ -107,11 +150,28 @@ plugins::disable() {
 }
 plugins::info() {
   local id="${1:?id}"
-  local f="$(plugins::dir_available)/${id}/plugin.sh"
+
+  # Validate plugin ID for security
+  plugins::validate_id "${id}" || return 2
+
+  local f
+  f="$(plugins::dir_available)/${id}/plugin.sh"
   [[ -f "${f}" ]] || {
-    echo "plugin not found: ${id}"
+    echo "plugin not found: ${id}" >&2
     return 2
-  } # shellcheck source=/dev/null
+  }
+
+  # Security: Verify plugin is within expected directory
+  local real_f real_av_dir
+  real_f="$(realpath "${f}" 2> /dev/null || echo "")"
+  real_av_dir="$(realpath "$(plugins::dir_available)" 2> /dev/null || echo "")"
+
+  if [[ -z "${real_f}" || -z "${real_av_dir}" ]] || [[ ! "${real_f}" =~ ^"${real_av_dir}"/ ]]; then
+    echo "plugin source validation failed: ${id}" >&2
+    return 2
+  fi
+
+  # shellcheck source=/dev/null
   . "${f}"
   echo "id: ${XRF_PLUGIN_ID}"
   echo "version: ${XRF_PLUGIN_VERSION:-0.0.0}"

@@ -33,7 +33,8 @@ digest_confdir() {
 }
 
 render_release() {
-  local topology="${1}" rel="$(xray::releases)"
+  local topology="${1}" rel
+  rel="$(xray::releases)"
   io::ensure_dir "${rel}" 0755
   local ts
   ts="$(date -u +%Y%m%d%H%M%S)"
@@ -147,8 +148,21 @@ deploy_release() {
   local d="${1}"
   core::log debug "deploy_release started" "$(printf '{"release_dir":"%s"}' "${d}")"
 
+  # Security: Validate directory path to prevent injection attacks
+  if [[ ! "${d}" =~ ^/[a-zA-Z0-9/_.-]+$ ]]; then
+    core::log error "invalid directory path" "$(printf '{"path":"%s"}' "${d}")"
+    return 1
+  fi
+
+  if [[ ! -d "${d}" ]]; then
+    core::log error "directory does not exist" "$(printf '{"path":"%s"}' "${d}")"
+    return 1
+  fi
+
   if [[ -x "$(xray::bin)" && "${XRF_SKIP_XRAY_TEST:-false}" != "true" ]]; then
-    core::log debug "testing xray config" "$(printf '{"confdir":"%s","xray_bin":"%s"}' "${d}" "$(xray::bin)")"
+    local xray_bin
+    xray_bin="$(xray::bin)"
+    core::log debug "testing xray config" "$(printf '{"confdir":"%s","xray_bin":"%s"}' "${d}" "${xray_bin}")"
 
     # 验证配置文件存在且可读
     for f in "${d}"/*.json; do
@@ -160,7 +174,13 @@ deploy_release() {
     done
 
     local test_output
-    if ! test_output="$("$(xray::bin)" -test -confdir "${d}" -format json 2>&1)"; then
+    # Security: Use absolute path and validate it exists
+    if [[ ! -x "${xray_bin}" ]]; then
+      core::log error "xray binary not executable" "$(printf '{"path":"%s"}' "${xray_bin}")"
+      return 1
+    fi
+
+    if ! test_output="$("${xray_bin}" -test -confdir "${d}" -format json 2>&1)"; then
       local esc
       esc="${d//\"/\\\"}"
       core::log error "xray config test failed" "$(printf '{"confdir":"%s","test_output":"%s"}' "${esc}" "${test_output}")"
@@ -204,6 +224,15 @@ main() {
     shift 2
     ;;
   *) shift ;; esac done
+
+  # Security: Validate topology parameter
+  case "${topology}" in
+    "reality-only" | "vision-reality") ;;
+    *)
+      core::log error "invalid topology" "$(printf '{"topology":"%s","valid_options":"reality-only,vision-reality"}' "${topology}")"
+      exit 1
+      ;;
+  esac
   plugins::ensure_dirs
   plugins::load_enabled
   core::with_flock "$(state::lock)" deploy_with_lock "${topology}"

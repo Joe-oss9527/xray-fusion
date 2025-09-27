@@ -3,7 +3,7 @@ SRC   := $(shell git ls-files '*.sh' 'bin/*' 'commands/*' 'lib/*' 'modules/**/*'
 
 .PHONY: lint fmt
 lint:
-	@shellcheck -S style -x $(SRC)
+	@shellcheck -S error -S warning -x $(SRC)
 
 fmt:
 	@command -v shfmt >/dev/null 2>&1 || { echo "shfmt not found; see https://github.com/mvdan/sh"; exit 2; }

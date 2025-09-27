@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2034  # Plugin metadata variables are used by the plugin system
 XRF_PLUGIN_ID="logrotate-obs"
 XRF_PLUGIN_VERSION="1.0.0"
 XRF_PLUGIN_DESC="File logging + logrotate + optional journald tuning, with observability tips"
@@ -14,9 +15,11 @@ _journal_dropin() { echo "$(_journal_dropin_dir)/xray-fusion.conf"; }
 logrotate_obs::configure_post() {
   local topology="" release_dir=""
   for kv in "${@}"; do case "${kv}" in topology=*) topology="${kv#*=}" ;; release_dir=*) release_dir="${kv#*=}" ;; esac done
+  # Note: topology variable is used for context but may not be referenced directly
   local target="${XRF_LOG_TARGET:-journald}" lvl="${XRAY_LOG_LEVEL:-warning}"
   if [[ "${target}" == "file" ]]; then
-    local d="$(_log_dir)"
+    local d
+    d="$(_log_dir)"
     io::ensure_dir "${d}" 0750
     chown root:xray "${d}" 2> /dev/null || true
     chmod 0750 "${d}" 2> /dev/null || true
@@ -68,12 +71,14 @@ logrotate_obs::service_setup() {
 }
 
 logrotate_obs::service_remove() {
-  local conf="$(_logrotate_path)"
+  local conf
+  conf="$(_logrotate_path)"
   [[ -f "${conf}" ]] && rm -f "${conf}" || true
   core::log info "[logrotate-obs] logrotate removed" "$(printf '{"path":"%s"}' "${conf}")"
 }
 logrotate_obs::uninstall_pre() {
-  local j="$(_journal_dropin)"
+  local j
+  j="$(_journal_dropin)"
   [[ -f "${j}" ]] && rm -f "${j}" || true
 }
 

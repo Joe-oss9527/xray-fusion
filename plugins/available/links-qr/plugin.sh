@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2034  # Plugin metadata variables are used by the plugin system
 XRF_PLUGIN_ID="links-qr"
 XRF_PLUGIN_VERSION="1.0.0"
 XRF_PLUGIN_DESC="Render QR codes for client links (if qrencode present)"

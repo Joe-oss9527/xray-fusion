@@ -27,7 +27,8 @@ remove_unit() {
   plugins::emit service_remove "unit=${unit_file}"
   systemctl disable --now xray || true
   rm -f "${unit_file}"
-  systemctl daemon-reload
+  systemctl daemon-reload || true
+  systemctl reset-failed xray.service 2> /dev/null || true
   core::log info "systemd unit removed" "{}"
 }
 case "${1-}" in install) install_unit "${@}" ;; remove) remove_unit "${@}" ;; *)

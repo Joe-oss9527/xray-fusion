@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2034  # Plugin metadata variables are used by the plugin system
 XRF_PLUGIN_ID="cert-auto"
 XRF_PLUGIN_VERSION="1.0.0"
 XRF_PLUGIN_DESC="Auto-issue/renew TLS via Caddy for Vision"
@@ -6,6 +7,26 @@ XRF_PLUGIN_HOOKS=("configure_pre" "service_setup")
 HERE="${HERE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
 . "${HERE}/lib/core.sh"
 . "${HERE}/modules/web/caddy.sh"
+
+# Validate domain name format and prevent internal domains
+_validate_domain() {
+  local domain="${1}"
+
+  # Basic format check: alphanumeric, dots, hyphens
+  [[ "${domain}" =~ ^[a-zA-Z0-9.-]+$ ]] || return 1
+
+  # Must contain at least one dot
+  [[ "${domain}" == *.* ]] || return 1
+
+  # Reject internal/localhost domains
+  case "${domain}" in
+    localhost | *.localhost | 127.* | 10.* | 172.16.* | 172.17.* | 172.18.* | 172.19.* | 172.2?.* | 172.30.* | 172.31.* | 192.168.* | *.local)
+      return 1
+      ;;
+  esac
+
+  return 0
+}
 
 cert_auto::configure_pre() {
   local topology="" release_dir=""
@@ -23,6 +44,12 @@ cert_auto::configure_pre() {
     core::log error "cert-auto XRAY_DOMAIN not set" "{}"
     return 0
   }
+
+  # Security: Validate domain name
+  if ! _validate_domain "${domain}"; then
+    core::log error "invalid or internal domain" "$(printf '{"domain":"%s"}' "${domain}")"
+    return 1
+  fi
 
   local vision_port="${XRAY_VISION_PORT:-8443}"
   core::log info "cert-auto setting up auto TLS" "$(printf '{"domain":"%s","port":"%s"}' "${domain}" "${vision_port}")"

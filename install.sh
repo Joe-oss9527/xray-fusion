@@ -97,10 +97,12 @@ early_checks() {
   # Check package manager (apt-get or yum)
   local cmd
   cmd=$(type -P apt-get || type -P yum || type -P dnf)
-  [[ ! $cmd ]] && error_exit "此脚本仅支持 Ubuntu/Debian/CentOS/RHEL 系统"
+  [[ -z "${cmd}" ]] && error_exit "此脚本仅支持 Ubuntu/Debian/CentOS/RHEL 系统"
 
   # Check systemd
-  [[ ! $(type -P systemctl) ]] && error_exit "此系统缺少 systemctl，请安装 systemd"
+  if ! type -P systemctl > /dev/null 2>&1; then
+    error_exit "此系统缺少 systemctl，请安装 systemd"
+  fi
 
   # Check architecture (simplified)
   case $(uname -m) in
@@ -161,14 +163,17 @@ install_dependencies() {
     case "${pkg_manager}" in
       apt)
         apt-get update -qq || log_warn "apt-get update 失败，继续安装..."
-        apt-get install -y ${missing_deps} || error_exit "依赖包安装失败"
+        apt-get install -y "${missing_deps}" || error_exit "依赖包安装失败"
         ;;
       yum)
         yum install -y epel-release || log_warn "epel-release 安装失败，继续..."
-        yum install -y ${missing_deps} || error_exit "依赖包安装失败"
+        yum install -y "${missing_deps}" || error_exit "依赖包安装失败"
         ;;
       dnf)
-        dnf install -y ${missing_deps} || error_exit "依赖包安装失败"
+        dnf install -y "${missing_deps}" || error_exit "依赖包安装失败"
+        ;;
+      *)
+        error_exit "不支持的包管理器: ${pkg_manager}"
         ;;
     esac
     log_info "依赖包安装完成"
