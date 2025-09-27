@@ -45,6 +45,28 @@ core::log() {
 - 使用项目内置的日志模块，不要用 `echo`
 - 函数的 stdout 应该只用于返回值，所有日志都应该输出到 stderr
 
+### 其他输出污染案例
+
+**问题**：外部命令输出混入函数返回值
+
+**症状**：
+```bash
+# caddy-cert-sync 脚本输出污染了函数返回值
+[caddy-cert-sync] certificates updated for r.950288.xyz
+/usr/local/etc/xray/releases/20250927081755/*.json
+```
+
+**解决方案**：
+```bash
+# 原来的调用（有问题）
+/usr/local/bin/caddy-cert-sync 2>/dev/null || true
+
+# 修复后的调用
+/usr/local/bin/caddy-cert-sync >/dev/null 2>&1 || true
+```
+
+**教训**：任何可能产生输出的外部命令都必须重定向 stdout 和 stderr
+
 ## Xray Vision-Reality 拓扑最佳实践
 
 ### 端口配置最佳实践
@@ -112,6 +134,39 @@ XRAY_CERT_DIR="/usr/local/etc/xray/certs"
 
 **定时同步**：使用 systemd timer 每小时同步证书更新
 
+## Shell 编程高级问题
+
+### Trap 和变量作用域
+
+**问题**：`tmpdir: unbound variable` 错误
+
+**根因**：EXIT trap 中使用局部变量，在函数退出后变量作用域失效
+
+**错误代码**：
+```bash
+caddy::install() {
+  local tmpdir
+  tmpdir="$(mktemp -d)"
+  trap 'rm -rf "${tmpdir}"' EXIT  # ❌ 局部变量在 trap 中可能失效
+}
+```
+
+**修复方案**：
+```bash
+caddy::install() {
+  local tmpdir
+  tmpdir="$(mktemp -d)"
+  # 使用全局变量存储，确保 trap 中可访问
+  _CADDY_TMPDIR="${tmpdir}"
+  trap 'rm -rf "${_CADDY_TMPDIR:-}" 2>/dev/null || true; unset _CADDY_TMPDIR' EXIT
+}
+```
+
+**教训**：
+- EXIT trap 可能在函数作用域外执行，避免使用局部变量
+- 使用参数展开 `"${var:-}"` 防止 unbound variable 错误
+- 在 trap 中添加错误处理 `2>/dev/null || true`
+
 ## 代码质量和架构原则
 
 ### 清理原则
@@ -172,6 +227,50 @@ XRAY_CERT_DIR="/usr/local/etc/xray/certs"
 - ✅ 正确：查阅 Xray 官方文档，采用推荐的端口配置（443 for Reality）
 - ✅ 正确：参考 233boy/Xray 成熟实践，使用 Caddy 自动证书管理
 
+## 脚本自动化原则
+
+### 完全脚本化要求
+
+**用户要求**：
+> "确保所有操作都是通过脚本进行的，而不是手动处理"
+
+**实施要点**：
+
+1. **参数化配置**：
+   ```bash
+   # ✅ 通过参数自动启用插件
+   bin/xrf install --topology vision-reality --enable-plugins cert-auto
+
+   # ❌ 手动启用插件
+   bin/xrf plugin enable cert-auto
+   bin/xrf install --topology vision-reality
+   ```
+
+2. **自动状态管理**：
+   - 安装脚本自动启用指定插件
+   - 卸载脚本自动禁用所有插件
+   - 无需手动状态清理
+
+3. **完整清理逻辑**：
+   ```bash
+   # 卸载脚本自动处理
+   disable_all_plugins() {
+     local enabled_dir="${HERE}/plugins/enabled"
+     for plugin_link in "${enabled_dir}"/*.sh; do
+       if [[ -L "${plugin_link}" ]]; then
+         local plugin_name="$(basename "${plugin_link}" .sh)"
+         rm -f "${plugin_link}" || true
+       fi
+     done
+   }
+   ```
+
+**避免手动操作**：
+- ❌ 手动启用/禁用插件
+- ❌ 手动清理配置文件
+- ❌ 手动服务管理
+- ❌ 手动状态重置
+
 ## 变量命名演变
 
 **历史变更**：
@@ -228,6 +327,8 @@ vless://uuid@104.194.91.33:443?encryption=none&flow=xtls-rprx-vision&security=re
 5. **技术选型**：选择成熟方案（Caddy）而非重复造轮子（acme.sh）
 6. **真凭实据**：不做猜测，必须基于实际日志和观察进行分析
 7. **文档优先**：优先查阅官方文档，避免使用过期废弃的方式
+8. **脚本自动化**：确保所有操作通过脚本参数化，避免手动干预
+9. **变量作用域**：注意 trap 和函数作用域问题，避免 unbound variable 错误
 
 ## 开发工作流程
 
@@ -248,6 +349,8 @@ vless://uuid@104.194.91.33:443?encryption=none&flow=xtls-rprx-vision&security=re
 - ❌ 保留废弃代码进行兼容性处理
 - ❌ 忽略日志输出直接修改配置
 - ❌ 跳过官方文档查阅环节
+- ❌ 在 trap 中使用局部变量
+- ❌ 使用手动操作代替脚本自动化
 
 ### 推荐行为
 
@@ -256,5 +359,8 @@ vless://uuid@104.194.91.33:443?encryption=none&flow=xtls-rprx-vision&security=re
 - ✅ 选择有长期维护保证的成熟方案
 - ✅ 基于实际观察现象进行根因分析
 - ✅ 保持代码整洁，及时清理废弃代码
+- ✅ 设计完全脚本化的工作流程
+- ✅ 在 trap 中使用全局变量和错误处理
+- ✅ 确保外部命令输出不污染函数返回值
 
 这些经验将指导后续的开发工作，确保高质量的代码和可靠的系统架构。

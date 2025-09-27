@@ -1,5 +1,5 @@
 SHELL := /usr/bin/env bash
-SRC   := $(shell git ls-files '*.sh' 'bin/*' 'commands/*' 'lib/*' 'modules/**/*' 'services/**/*' 'plugins/**/*' 2>/dev/null)
+SRC   := $(shell git ls-files '*.sh' 'bin/*' 'commands/*' 'lib/*' 'modules/**/*' 'services/**/*' 'plugins/**/*.sh' 2>/dev/null)
 
 .PHONY: lint fmt
 lint:

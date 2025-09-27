@@ -7,7 +7,13 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() {
   cat << EOF
-Usage: xrf install [--version vX.Y.Z|latest] [--topology reality-only|vision-reality]
+Usage: xrf install [--version vX.Y.Z|latest] [--topology reality-only|vision-reality] [--enable-plugins plugin1,plugin2]
+Options:
+  --version VERSION             Xray version to install (default: latest)
+  --topology TOPOLOGY           Topology type: reality-only|vision-reality (default: reality-only)
+  --enable-plugins PLUGINS      Comma-separated list of plugins to enable before installation
+  -h, --help                    Show this help
+
 Env:
   XRAY_SNIFFING=false|true
   # reality-only
@@ -21,7 +27,7 @@ main() {
   core::init "${@}"
   plugins::ensure_dirs
   plugins::load_enabled
-  local version="latest" topology="reality-only"
+  local version="latest" topology="reality-only" enable_plugins=""
   while [[ $# -gt 0 ]]; do case "${1}" in --version)
     version="${2}"
     shift 2
@@ -30,11 +36,29 @@ main() {
     topology="${2}"
     shift 2
     ;;
+  --enable-plugins)
+    enable_plugins="${2}"
+    shift 2
+    ;;
   -h | --help)
     usage
     exit 0
     ;;
   *) shift ;; esac done
+
+  # Enable plugins if specified
+  if [[ -n "${enable_plugins}" ]]; then
+    core::log info "enabling plugins" "$(printf '{"plugins":"%s"}' "${enable_plugins}")"
+    IFS=',' read -ra plugin_list <<< "${enable_plugins}"
+    for plugin in "${plugin_list[@]}"; do
+      plugin="$(echo "${plugin}" | xargs)" # trim whitespace
+      if [[ -n "${plugin}" ]]; then
+        "${HERE}/commands/plugin.sh" enable "${plugin}"
+      fi
+    done
+    # Reload enabled plugins after enabling new ones
+    plugins::load_enabled
+  fi
 
   plugins::emit install_pre "topology=${topology}" "version=${version}"
   "${HERE}/services/xray/install.sh" --version "${version}"

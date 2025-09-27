@@ -22,14 +22,14 @@ caddy::detect_arch() {
 }
 
 caddy::get_latest_version() {
-  curl -fsSL https://api.github.com/repos/caddyserver/caddy/releases/latest |
-    grep -o '"tag_name":[[:space:]]*"[^"]*"' |
-    cut -d'"' -f4
+  curl -fsSL https://api.github.com/repos/caddyserver/caddy/releases/latest \
+    | grep -o '"tag_name":[[:space:]]*"[^"]*"' \
+    | cut -d'"' -f4
 }
 
 caddy::install() {
   if [[ -x "$(caddy::bin)" ]]; then
-    core::log info "caddy already installed" "$(printf '{"version":"%s"}' "$("$(caddy::bin)" version 2>/dev/null | head -n1 | cut -d' ' -f1)")"
+    core::log info "caddy already installed" "$(printf '{"version":"%s"}' "$("$(caddy::bin)" version 2> /dev/null | head -n1 | cut -d' ' -f1)")"
     return 0
   fi
 
@@ -39,7 +39,9 @@ caddy::install() {
   tmpdir="$(mktemp -d)"
   tmpfile="${tmpdir}/caddy.tar.gz"
 
-  trap 'rm -rf "${tmpdir}"' EXIT
+  # Store tmpdir in a global variable for trap cleanup
+  _CADDY_TMPDIR="${tmpdir}"
+  trap 'rm -rf "${_CADDY_TMPDIR:-}" 2>/dev/null || true; unset _CADDY_TMPDIR' EXIT
 
   local url="https://github.com/caddyserver/caddy/releases/download/${version}/caddy_${version:1}_linux_${arch}.tar.gz"
 
@@ -135,7 +137,7 @@ caddy::wait_for_cert() {
       # 等待一点时间让 Caddy 获取证书
       sleep 10
       # 尝试同步证书
-      /usr/local/bin/caddy-cert-sync 2>/dev/null || true
+      /usr/local/bin/caddy-cert-sync > /dev/null 2>&1 || true
 
       # 检查证书是否已同步
       if [[ -f "$(caddy::cert_dir)/fullchain.pem" && -f "$(caddy::cert_dir)/privkey.pem" ]]; then
