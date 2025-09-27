@@ -61,6 +61,7 @@ Options:
   --topology <reality-only|vision-reality>  Installation topology (default: reality-only)
   --version <version>                        Xray version to install (default: latest)
   --enable-plugins <plugin1,plugin2>        Enable plugins after installation
+  --domain <domain>                          Set XRAY_DOMAIN for vision-reality topology
   --proxy <proxy_url>                       Use proxy for downloads
   --install-dir <path>                       Installation directory (default: /usr/local/xray-fusion)
   --debug                                    Enable debug output
@@ -70,9 +71,14 @@ Examples:
   # Basic installation
   curl -sL https://raw.githubusercontent.com/Joe-oss9527/xray-fusion/main/install.sh | bash
 
-  # Advanced installation with plugins
+  # Vision-Reality with domain
   curl -sL https://raw.githubusercontent.com/Joe-oss9527/xray-fusion/main/install.sh | bash -s -- \\
-    --topology vision-reality --enable-plugins cert-auto,logrotate-obs
+    --topology vision-reality --domain your.domain.com --enable-plugins cert-auto
+
+  # Alternative: Use environment variable (requires export)
+  export XRAY_DOMAIN=your.domain.com
+  curl -sL https://raw.githubusercontent.com/Joe-oss9527/xray-fusion/main/install.sh | bash -s -- \\
+    --topology vision-reality --enable-plugins cert-auto
 
 Environment Variables:
   XRF_REPO_URL      Repository URL (default: https://github.com/Joe-oss9527/xray-fusion.git)
@@ -397,6 +403,10 @@ parse_args() {
       --debug)
         DEBUG="true"
         shift
+        ;;
+      --domain)
+        export XRAY_DOMAIN="${2}"
+        shift 2
         ;;
       --help | -h)
         show_help
