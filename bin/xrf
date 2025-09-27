@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"; . "${HERE}/lib/core.sh"
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"; HERE="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"; . "${HERE}/lib/core.sh"
 usage(){ cat <<EOF
 xrf — Xray Fusion Lite (complete clean)
 Usage: xrf <command>
