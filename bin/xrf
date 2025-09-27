@@ -5,7 +5,6 @@ usage(){ cat <<EOF
 xrf — Xray Fusion Lite (complete clean)
 Usage: xrf <command>
   install     Install Xray & deploy confdir (atomic, flock-protected)
-  service     Setup/remove systemd unit
   status      Show version & active confdir
   uninstall   Remove Xray (keep state)
   links       Print client links
@@ -15,7 +14,6 @@ EOF
 }
 case "${1-}" in
   install)   shift||true; "${HERE}/commands/install.sh" "$@" ;;
-  service)   shift||true; "${HERE}/commands/service.sh" "$@" ;;
   status)    shift||true; "${HERE}/commands/status.sh" "$@" ;;
   uninstall) shift||true; "${HERE}/commands/uninstall.sh" "$@" ;;
   links)     shift||true; "${HERE}/services/xray/client-links.sh" "$@" ;;
