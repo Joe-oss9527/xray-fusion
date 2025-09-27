@@ -37,10 +37,50 @@ main(){
   [[ -n "${XRAY_SHORT_ID:-}" ]] || XRAY_SHORT_ID="$(openssl rand -hex 8 2>/dev/null || head -c 8 /dev/urandom | hexdump -e '16/1 \"%02x\"')"
   export XRAY_SNIFFING="${XRAY_SNIFFING:-false}"
   export XRAY_UUID XRAY_UUID_VISION XRAY_UUID_REALITY XRAY_SHORT_ID XRAY_REALITY_SNI XRAY_REALITY_DEST \
-    XRAY_PORT XRAY_VISION_PORT XRAY_REALITY_PORT XRAY_DOMAIN XRAY_CERT_DIR XRAY_FALLBACK_PORT
+    XRAY_PORT XRAY_VISION_PORT XRAY_REALITY_PORT XRAY_DOMAIN XRAY_CERT_DIR XRAY_FALLBACK_PORT \
+    XRAY_PRIVATE_KEY XRAY_PUBLIC_KEY
 
   plugins::emit install_post "topology=${topology}" "version=${version}"
   "${HERE}/services/xray/configure.sh" --topology "${topology}"
+
+  # Extract generated keys from configuration for state saving
+  if [[ -f "$(xray::active)/05_inbounds.json" ]]; then
+    # Check jq dependency
+    if ! command -v jq >/dev/null 2>&1; then
+      core::log error "jq command required for key extraction" "{}"
+      exit 4
+    fi
+
+    # Validate JSON configuration file
+    if ! jq empty "$(xray::active)/05_inbounds.json" 2>/dev/null; then
+      core::log error "Invalid JSON in configuration file" "$(printf '{"file":"%s"}' "$(xray::active)/05_inbounds.json")"
+      exit 6
+    fi
+
+    local extracted_private_key; extracted_private_key="$(jq -r '.inbounds[]?.streamSettings?.realitySettings?.privateKey // empty' "$(xray::active)/05_inbounds.json" 2>/dev/null | head -1)"
+    if [[ -n "$extracted_private_key" && -z "${XRAY_PRIVATE_KEY:-}" ]]; then
+      XRAY_PRIVATE_KEY="$extracted_private_key"
+      # Generate corresponding public key from private key
+      if [[ -x "$(xray::bin)" ]]; then
+        local kp
+        if kp="$("$(xray::bin)" x25519 -i "$XRAY_PRIVATE_KEY" 2>/dev/null)"; then
+          XRAY_PUBLIC_KEY="$(echo "$kp" | awk '/Password:/ {print $2}')"
+          if [[ -z "$XRAY_PUBLIC_KEY" ]]; then
+            core::log error "Failed to extract public key from xray output" "{}"
+            exit 5
+          fi
+        else
+          core::log error "Failed to generate public key from private key" "{}"
+          exit 5
+        fi
+        # Clear sensitive variables
+        unset kp extracted_private_key
+      else
+        core::log error "xray binary not found or not executable" "$(printf '{"path":"%s"}' "$(xray::bin)")"
+        exit 3
+      fi
+    fi
+  fi
 
   local ver="unknown"; [[ -x "$(xray::bin)" ]] && ver="$("$(xray::bin)" -version 2>/dev/null | awk 'NR==1{print $2}')"
   local now; now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"

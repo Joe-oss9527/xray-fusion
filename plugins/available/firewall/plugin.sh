@@ -3,7 +3,7 @@ XRF_PLUGIN_ID="firewall"
 XRF_PLUGIN_VERSION="1.0.0"
 XRF_PLUGIN_DESC="Open/close ports with ufw/firewalld during service lifecycle"
 XRF_PLUGIN_HOOKS=("configure_post" "uninstall_pre")
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+HERE="${HERE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
 . "${HERE}/modules/fw/fw.sh"
 firewall::configure_post(){
   local topology=""; for kv in "$@"; do case "$kv" in topology=*) topology="${kv#*=}" ;; esac; done

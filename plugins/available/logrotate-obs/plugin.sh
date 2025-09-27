@@ -3,7 +3,7 @@ XRF_PLUGIN_ID="logrotate-obs"
 XRF_PLUGIN_VERSION="1.0.0"
 XRF_PLUGIN_DESC="File logging + logrotate + optional journald tuning, with observability tips"
 XRF_PLUGIN_HOOKS=("configure_post" "service_setup" "service_remove" "links_render" "uninstall_pre")
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"; . "${HERE}/lib/core.sh"; . "${HERE}/modules/io.sh"
+HERE="${HERE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"; . "${HERE}/lib/core.sh"; . "${HERE}/modules/io.sh"
 _log_dir(){ echo "/var/log/xray"; }
 _logrotate_path(){ echo "/etc/logrotate.d/xray-fusion"; }
 _journal_dropin_dir(){ echo "/etc/systemd/journald.conf.d"; }
