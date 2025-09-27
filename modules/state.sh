@@ -8,6 +8,6 @@ state::digest(){ echo "$(state::dir)/config.sha256"; }
 state::lock(){ echo "$(state::dir)/locks/configure.lock"; }
 
 state::save(){
-  local j="$1"; io::ensure_dir "$(state::dir)" 0755; io::atomic_write "$(state::path)" 0644 <<<"$j"
+  local j="${1}"; io::ensure_dir "$(state::dir)" 0755; io::atomic_write "$(state::path)" 0644 <<<"${j}"
 }
-state::load(){ local p; p="$(state::path)"; [[ -f "$p" ]] && cat "$p" || echo "{}"; }
+state::load(){ local p; p="$(state::path)"; [[ -f "${p}" ]] && cat "${p}" || echo "{}"; }

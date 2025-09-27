@@ -23,20 +23,26 @@ DEBUG=""
 REMOVE_INSTALL_DIR=""
 
 # Logging functions
-log_info() { echo -e "${GREEN}[INFO]${NC} $*"; }
-log_warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
-log_error() { echo -e "${RED}[ERROR]${NC} $*"; }
-log_debug() { [[ "$DEBUG" == "true" ]] && echo -e "${BLUE}[DEBUG]${NC} $*"; }
+log_info() { echo -e "${GREEN}[INFO]${NC} ${*}"; }
+log_warn() { echo -e "${YELLOW}[WARN]${NC} ${*}"; }
+log_error() { echo -e "${RED}[ERROR]${NC} ${*}"; }
+log_debug() { [[ "${DEBUG}" == "true" ]] && echo -e "${BLUE}[DEBUG]${NC} ${*}"; }
+
+abort_non_interactive() {
+    local msg="${1:-Non-interactive execution requires --force.}"
+    log_error "${msg}"
+    return 2
+}
 
 # Error handling
 error_exit() {
-    log_error "$1"
+    log_error "${1}"
     cleanup
     exit 1
 }
 
 cleanup() {
-    [[ -n "${TMP_DIR:-}" && -d "$TMP_DIR" ]] && rm -rf "$TMP_DIR"
+    [[ -n "${TMP_DIR:-}" && -d "${TMP_DIR}" ]] && rm -rf "${TMP_DIR}"
 }
 
 trap cleanup EXIT
@@ -82,18 +88,18 @@ check_installation() {
     # Check if xrf command exists
     if ! command -v xrf >/dev/null 2>&1; then
         # Check if installation directory exists
-        if [[ ! -d "$INSTALL_DIR" ]]; then
+        if [[ ! -d "${INSTALL_DIR}" ]]; then
             log_warn "xray-fusion is not installed or not found in expected locations"
-            if [[ "$FORCE" != "true" ]]; then
+            if [[ "${FORCE}" != "true" ]]; then
                 if [[ -t 0 ]]; then
                     read -p "Continue anyway? [y/N]: " -r
+                    if [[ ! ${REPLY} =~ ^[Yy]$ ]]; then
+                        log_info "Uninstallation cancelled"
+                        exit 0
+                    fi
                 else
-                    log_warn "Non-interactive mode: defaulting to cancel"
-                    REPLY="N"
-                fi
-                if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-                    log_info "Uninstallation cancelled"
-                    exit 0
+                    abort_non_interactive "Non-interactive mode detected. Re-run with --force to uninstall."
+                    return 2
                 fi
             fi
             return 1
@@ -127,7 +133,7 @@ get_installation_info() {
     echo ""
     log_info "The following will be removed:"
     [[ -L /usr/local/bin/xrf ]] && echo "  - Global xrf command: /usr/local/bin/xrf"
-    [[ -d "$INSTALL_DIR" ]] && echo "  - Installation directory: $INSTALL_DIR"
+    [[ -d "${INSTALL_DIR}" ]] && echo "  - Installation directory: ${INSTALL_DIR}"
 
     # Check for Xray binaries and configs
     local xray_locations=(
@@ -138,11 +144,11 @@ get_installation_info() {
     )
 
     for location in "${xray_locations[@]}"; do
-        if [[ -e "$location" ]]; then
-            if [[ "$KEEP_CONFIG" == "true" && ("$location" == *"/etc/xray"* || "$location" == *"config"*) ]]; then
-                echo "  - $location (KEPT due to --keep-config)"
+        if [[ -e "${location}" ]]; then
+            if [[ "${KEEP_CONFIG}" == "true" && ("${location}" == *"/etc/xray"* || "${location}" == *"config"*) ]]; then
+                echo "  - ${location} (KEPT due to --keep-config)"
             else
-                echo "  - $location"
+                echo "  - ${location}"
             fi
         fi
     done
@@ -151,30 +157,30 @@ get_installation_info() {
 
 # Confirm uninstallation
 confirm_uninstallation() {
-    if [[ "$FORCE" == "true" ]]; then
+    if [[ "${FORCE}" == "true" ]]; then
         log_info "Force mode enabled, skipping confirmation"
         return 0
     fi
 
     log_warn "This will completely remove xray-fusion and Xray from your system!"
-    [[ "$KEEP_CONFIG" == "true" ]] && log_info "Configuration files will be preserved"
+    [[ "${KEEP_CONFIG}" == "true" ]] && log_info "Configuration files will be preserved"
 
     if [[ -t 0 ]]; then
         read -p "Are you sure you want to continue? [y/N]: " -r
+        if [[ ! ${REPLY} =~ ^[Yy]$ ]]; then
+            log_info "Uninstallation cancelled"
+            exit 0
+        fi
     else
-        log_warn "Non-interactive mode: defaulting to cancel"
-        REPLY="N"
-    fi
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        log_info "Uninstallation cancelled"
-        exit 0
+        abort_non_interactive "Non-interactive mode detected. Re-run with --force to proceed."
+        return 2
     fi
 }
 
 # Download uninstall scripts if needed
 download_uninstall_scripts() {
     # If we can use the installed version, do so
-    if [[ -f "$INSTALL_DIR/bin/xrf" ]]; then
+    if [[ -f "${INSTALL_DIR}/bin/xrf" ]]; then
         log_debug "Using installed xrf for uninstallation"
         return 0
     fi
@@ -182,10 +188,10 @@ download_uninstall_scripts() {
     log_info "Downloading uninstall scripts..."
 
     TMP_DIR="$(mktemp -d)"
-    log_debug "Using temporary directory: $TMP_DIR"
+    log_debug "Using temporary directory: ${TMP_DIR}"
 
     # Clone repository (only needed files)
-    if ! git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$TMP_DIR/xray-fusion" 2>/dev/null; then
+    if ! git clone --depth 1 --branch "${BRANCH}" "${REPO_URL}" "${TMP_DIR}/xray-fusion" 2>/dev/null; then
         log_warn "Failed to download from repository, attempting manual uninstallation"
         return 1
     fi
@@ -223,10 +229,10 @@ run_xrf_uninstall() {
     local xrf_cmd=""
 
     # Determine which xrf command to use
-    if [[ -f "$INSTALL_DIR/bin/xrf" ]]; then
-        xrf_cmd="$INSTALL_DIR/bin/xrf"
-    elif [[ -f "$TMP_DIR/xray-fusion/bin/xrf" ]]; then
-        xrf_cmd="$TMP_DIR/xray-fusion/bin/xrf"
+    if [[ -f "${INSTALL_DIR}/bin/xrf" ]]; then
+        xrf_cmd="${INSTALL_DIR}/bin/xrf"
+    elif [[ -f "${TMP_DIR}/xray-fusion/bin/xrf" ]]; then
+        xrf_cmd="${TMP_DIR}/xray-fusion/bin/xrf"
     elif command -v xrf >/dev/null 2>&1; then
         xrf_cmd="xrf"
     else
@@ -237,14 +243,14 @@ run_xrf_uninstall() {
     log_info "Running xray-fusion uninstall..."
 
     # Change to appropriate directory
-    if [[ -d "$INSTALL_DIR" ]]; then
-        cd "$INSTALL_DIR"
-    elif [[ -d "$TMP_DIR/xray-fusion" ]]; then
-        cd "$TMP_DIR/xray-fusion"
+    if [[ -d "${INSTALL_DIR}" ]]; then
+        cd "${INSTALL_DIR}"
+    elif [[ -d "${TMP_DIR}/xray-fusion" ]]; then
+        cd "${TMP_DIR}/xray-fusion"
     fi
 
     # Run uninstall command
-    if "$xrf_cmd" uninstall 2>/dev/null; then
+    if "${xrf_cmd}" uninstall 2>/dev/null; then
         log_info "xray-fusion uninstall completed"
         return 0
     else
@@ -270,7 +276,7 @@ manual_cleanup() {
     fi
 
     # Remove Xray configuration (unless keeping config)
-    if [[ "$KEEP_CONFIG" != "true" ]]; then
+    if [[ "${KEEP_CONFIG}" != "true" ]]; then
         if [[ -d /usr/local/etc/xray ]]; then
             rm -rf /usr/local/etc/xray
             log_debug "Removed /usr/local/etc/xray"
@@ -290,16 +296,28 @@ manual_cleanup() {
         rm -f /etc/logrotate.d/xray-fusion
         log_debug "Removed logrotate configuration"
     fi
+
+    # Clean up any remaining symlinks
+    for link_path in /usr/local/bin/xrf /usr/bin/xrf; do
+        if [[ -L "${link_path}" ]]; then
+            local target
+            target="$(readlink -f "${link_path}" 2>/dev/null || true)"
+            if [[ "${target}" == *"xray-fusion"* ]] || [[ ! -e "${target}" ]]; then
+                rm -f "${link_path}"
+                log_debug "Removed dangling symlink: ${link_path}"
+            fi
+        fi
+    done
 }
 
 # Remove installation directory
 remove_installation_directory() {
-    if [[ "$REMOVE_INSTALL_DIR" == "true" && -d "$INSTALL_DIR" ]]; then
-        log_info "Removing installation directory: $INSTALL_DIR"
-        rm -rf "$INSTALL_DIR"
-    elif [[ -d "$INSTALL_DIR" ]]; then
-        log_info "Installation directory preserved: $INSTALL_DIR"
-        log_info "To remove it manually: rm -rf $INSTALL_DIR"
+    if [[ "${REMOVE_INSTALL_DIR}" == "true" && -d "${INSTALL_DIR}" ]]; then
+        log_info "Removing installation directory: ${INSTALL_DIR}"
+        rm -rf "${INSTALL_DIR}"
+    elif [[ -d "${INSTALL_DIR}" ]]; then
+        log_info "Installation directory preserved: ${INSTALL_DIR}"
+        log_info "To remove it manually: rm -rf ${INSTALL_DIR}"
     fi
 }
 
@@ -309,30 +327,30 @@ show_summary() {
     log_info "Uninstallation Summary:"
     echo "  ✓ Systemd service removed"
     echo "  ✓ Xray binary removed"
-    [[ "$KEEP_CONFIG" == "true" ]] && echo "  ✓ Configuration files preserved" || echo "  ✓ Configuration files removed"
+    [[ "${KEEP_CONFIG}" == "true" ]] && echo "  ✓ Configuration files preserved" || echo "  ✓ Configuration files removed"
     echo "  ✓ Log files removed"
     echo "  ✓ Global xrf command removed"
-    [[ "$REMOVE_INSTALL_DIR" == "true" ]] && echo "  ✓ Installation directory removed" || echo "  ✓ Installation directory preserved"
+    [[ "${REMOVE_INSTALL_DIR}" == "true" ]] && echo "  ✓ Installation directory removed" || echo "  ✓ Installation directory preserved"
     echo ""
     log_info "xray-fusion has been successfully uninstalled!"
 
-    if [[ "$KEEP_CONFIG" == "true" ]]; then
+    if [[ "${KEEP_CONFIG}" == "true" ]]; then
         echo ""
         log_info "Configuration files were preserved. To complete removal:"
         echo "  sudo rm -rf /usr/local/etc/xray"
     fi
 
-    if [[ "$REMOVE_INSTALL_DIR" != "true" && -d "$INSTALL_DIR" ]]; then
+    if [[ "${REMOVE_INSTALL_DIR}" != "true" && -d "${INSTALL_DIR}" ]]; then
         echo ""
-        log_info "Installation directory was preserved: $INSTALL_DIR"
-        echo "  To remove: sudo rm -rf $INSTALL_DIR"
+        log_info "Installation directory was preserved: ${INSTALL_DIR}"
+        echo "  To remove: sudo rm -rf ${INSTALL_DIR}"
     fi
 }
 
 # Parse command line arguments
 parse_args() {
     while [[ $# -gt 0 ]]; do
-        case $1 in
+        case ${1} in
             --keep-config)
                 KEEP_CONFIG="true"
                 shift
@@ -354,7 +372,7 @@ parse_args() {
                 exit 0
                 ;;
             *)
-                log_warn "Unknown option: $1"
+                log_warn "Unknown option: ${1}"
                 shift
                 ;;
         esac
@@ -377,14 +395,30 @@ EOF
     echo ""
 
     # Check if running as root
-    if [[ $EUID -ne 0 ]]; then
+    if [[ ${EUID} -ne 0 ]]; then
         error_exit "This script must be run as root. Please use sudo."
     fi
 
-    parse_args "$@"
-    check_installation
+    parse_args "${@}"
+
+    local rc
+    if check_installation; then
+        rc=0
+    else
+        rc=$?
+        log_debug "check_installation rc=${rc}"
+        log_debug "exit rc=${rc}"
+        exit "${rc}"
+    fi
     get_installation_info
-    confirm_uninstallation
+    if confirm_uninstallation; then
+        rc=0
+    else
+        rc=$?
+        log_debug "confirm_uninstallation rc=${rc}"
+        log_debug "exit rc=${rc}"
+        exit "${rc}"
+    fi
     download_uninstall_scripts
     remove_systemd_service
 
@@ -400,4 +434,4 @@ EOF
 }
 
 # Run main function with all arguments
-main "$@"
+main "${@}"

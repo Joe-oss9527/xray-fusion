@@ -10,8 +10,8 @@ Env:
   XRF_PLUGINS=/usr/local/lib/xrf/plugins
 EOF
 }
-main(){ core::init "$@"; plugins::ensure_dirs; local sub="${1-}"; shift||true
-  case "$sub" in
+main(){ core::init "${@}"; plugins::ensure_dirs; local sub="${1-}"; shift||true
+  case "${sub}" in
     list) plugins::list ;;
     enable) plugins::enable "${1:?id required}" ;;
     disable) plugins::disable "${1:?id required}" ;;
@@ -19,4 +19,4 @@ main(){ core::init "$@"; plugins::ensure_dirs; local sub="${1-}"; shift||true
     *) usage; exit 2 ;;
   esac
 }
-main "$@"
+main "${@}"

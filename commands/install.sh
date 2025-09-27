@@ -13,9 +13,9 @@ EOF
 }
 
 main(){
-  core::init "$@"; plugins::ensure_dirs; plugins::load_enabled
+  core::init "${@}"; plugins::ensure_dirs; plugins::load_enabled
   local version="latest" topology="reality-only"
-  while [[ $# -gt 0 ]]; do case "$1" in --version) version="$2"; shift 2;; --topology) topology="$2"; shift 2;; -h|--help) usage; exit 0;; *) shift;; esac; done
+  while [[ $# -gt 0 ]]; do case "${1}" in --version) version="${2}"; shift 2;; --topology) topology="${2}"; shift 2;; -h|--help) usage; exit 0;; *) shift;; esac; done
 
   plugins::emit install_pre "topology=${topology}" "version=${version}"
   "${HERE}/services/xray/install.sh" --version "${version}"
@@ -40,8 +40,8 @@ main(){
   # Generate private/public key pair if not provided
   if [[ -z "${XRAY_PRIVATE_KEY:-}" && -x "$(xray::bin)" ]]; then
     local kp; kp="$("$(xray::bin)" x25519 2>/dev/null || true)"
-    XRAY_PRIVATE_KEY="$(echo "$kp" | awk '/PrivateKey:/ {print $2}')"
-    XRAY_PUBLIC_KEY="$(echo "$kp" | awk '/Password:/ {print $2}')"
+    XRAY_PRIVATE_KEY="$(echo "${kp}" | awk '/PrivateKey:/ {print $2}')"
+    XRAY_PUBLIC_KEY="$(echo "${kp}" | awk '/Password:/ {print $2}')"
     unset kp
   fi
 
@@ -75,4 +75,4 @@ main(){
   "${HERE}/services/xray/client-links.sh" "${topology}"
   core::log info "Install complete" "$(printf '{"topology":"%s","version":"%s"}' "${topology}" "${ver}")"
 }
-main "$@"
+main "${@}"
