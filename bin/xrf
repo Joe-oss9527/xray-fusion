@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
-SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"; HERE="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"; . "${HERE}/lib/core.sh"
-usage(){ cat <<EOF
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
+HERE="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
+. "${HERE}/lib/core.sh"
+usage() {
+  cat << EOF
 xrf — Xray Fusion Lite (complete clean)
 Usage: xrf <command>
   install     Install Xray & deploy confdir (atomic, flock-protected)
@@ -13,11 +16,29 @@ Usage: xrf <command>
 EOF
 }
 case "${1-}" in
-  install)   shift||true; "${HERE}/commands/install.sh" "$@" ;;
-  status)    shift||true; "${HERE}/commands/status.sh" "$@" ;;
-  uninstall) shift||true; "${HERE}/commands/uninstall.sh" "$@" ;;
-  links)     shift||true; "${HERE}/services/xray/client-links.sh" "$@" ;;
-  plugin)    shift||true; "${HERE}/commands/plugin.sh" "$@" ;;
-  help|"") usage ;;
-  *) usage; exit 2 ;;
+  install)
+    shift || true
+    "${HERE}/commands/install.sh" "$@"
+    ;;
+  status)
+    shift || true
+    "${HERE}/commands/status.sh" "$@"
+    ;;
+  uninstall)
+    shift || true
+    "${HERE}/commands/uninstall.sh" "$@"
+    ;;
+  links)
+    shift || true
+    "${HERE}/services/xray/client-links.sh" "$@"
+    ;;
+  plugin)
+    shift || true
+    "${HERE}/commands/plugin.sh" "$@"
+    ;;
+  help | "") usage ;;
+  *)
+    usage
+    exit 2
+    ;;
 esac

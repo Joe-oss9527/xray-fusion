@@ -1,20 +1,33 @@
 #!/usr/bin/env bash
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-. "${HERE}/lib/core.sh"; . "${HERE}/lib/plugins.sh"; . "${HERE}/modules/state.sh"; . "${HERE}/modules/net/network.sh"; . "${HERE}/services/xray/common.sh"
+. "${HERE}/lib/core.sh"
+. "${HERE}/lib/plugins.sh"
+. "${HERE}/modules/state.sh"
+. "${HERE}/modules/net/network.sh"
+. "${HERE}/services/xray/common.sh"
 
-main(){
-  core::init "${@}"; plugins::ensure_dirs; plugins::load_enabled
-  local st; st="$(state::load)"
-  local topo; topo="$(echo "${st}" | jq -r '.name // .topology // "reality-only"')"
-  local sni; sni="$(echo "${st}" | jq -r '.xray.reality_sni // "www.microsoft.com"')"
-  local sid; sid="$(echo "${st}" | jq -r '.xray.short_id // empty')"
-  local pbk; pbk="$(echo "${st}" | jq -r '.xray.reality_public_key // empty')"
+main() {
+  core::init "${@}"
+  plugins::ensure_dirs
+  plugins::load_enabled
+  local st
+  st="$(state::load)"
+  local topo
+  topo="$(echo "${st}" | jq -r '.name // .topology // "reality-only"')"
+  local sni
+  sni="$(echo "${st}" | jq -r '.xray.reality_sni // "www.microsoft.com"')"
+  local sid
+  sid="$(echo "${st}" | jq -r '.xray.short_id // empty')"
+  local pbk
+  pbk="$(echo "${st}" | jq -r '.xray.reality_public_key // empty')"
   # 确保shortId正确：如果为空，尝试从配置文件读取
   if [[ -z "${sid}" && -f "$(xray::active)/05_inbounds.json" ]]; then
-    sid="$(jq -r '.inbounds[]?.streamSettings?.realitySettings?.shortIds?[1] // .inbounds[]?.streamSettings?.realitySettings?.shortIds?[0] // empty' "$(xray::active)/05_inbounds.json" 2>/dev/null | head -1)"
+    sid="$(jq -r '.inbounds[]?.streamSettings?.realitySettings?.shortIds?[1] // .inbounds[]?.streamSettings?.realitySettings?.shortIds?[0] // empty' "$(xray::active)/05_inbounds.json" 2> /dev/null | head -1)"
   fi
-  local ip="${XRAY_SERVER_IP:-}"; [[ -n "${ip}" ]] || ip="$(net::detect_public_ip || true)"; [[ -n "${ip}" ]] || ip="YOUR_SERVER_IP"
+  local ip="${XRAY_SERVER_IP:-}"
+  [[ -n "${ip}" ]] || ip="$(net::detect_public_ip || true)"
+  [[ -n "${ip}" ]] || ip="YOUR_SERVER_IP"
   echo "========== LINKS =========="
   case "${topo}" in
     vision-reality)
