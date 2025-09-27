@@ -29,10 +29,10 @@ render_release(){
 
   case "${topology}" in
     reality-only)
-      : "${XRAY_PORT:=443}" : "${XRAY_UUID:?}" : "${XRAY_REALITY_SNI:=www.microsoft.com}" : "${XRAY_SHORT_ID:?}" : "${XRAY_PRIVATE_KEY:?}" : "${XRAY_PUBLIC_KEY:?}"
-      XRAY_REALITY_DEST="$(ensure_reality_dest "${XRAY_REALITY_DEST:-}" "${XRAY_REALITY_SNI}")"
+      : "${XRAY_PORT:=443}" : "${XRAY_UUID:?}" : "${XRAY_SNI:=www.microsoft.com}" : "${XRAY_SHORT_ID:?}" : "${XRAY_PRIVATE_KEY:?}" : "${XRAY_PUBLIC_KEY:?}"
+      XRAY_REALITY_DEST="$(ensure_reality_dest "${XRAY_REALITY_DEST:-}" "${XRAY_SNI}")"
       [[ -n "${XRAY_PRIVATE_KEY}" ]] || { core::log error "XRAY_PRIVATE_KEY required"; exit 2; }
-      local sn; sn="$(json_array_from_csv "${XRAY_REALITY_SNI}")"
+      local sn; sn="$(json_array_from_csv "${XRAY_SNI}")"
       cat >"${d}/05_inbounds.json" <<JSON
 {"inbounds":[{"tag":"reality","listen":"0.0.0.0","port":${XRAY_PORT},"protocol":"vless",
 "settings":{"clients":[{"id":"${XRAY_UUID}","flow":"xtls-rprx-vision"}],"decryption":"none"},
@@ -41,7 +41,7 @@ render_release(){
 JSON
       ;;
     vision-reality)
-      : "${XRAY_VISION_PORT:=8443}" : "${XRAY_REALITY_PORT:=443}" : "${XRAY_UUID_VISION:?}" : "${XRAY_UUID_REALITY:?}" : "${XRAY_DOMAIN:?}" : "${XRAY_CERT_DIR:=/usr/local/etc/xray/certs}" : "${XRAY_FALLBACK_PORT:=8080}" : "${XRAY_REALITY_SNI:=www.microsoft.com}" : "${XRAY_SHORT_ID:?}" : "${XRAY_PRIVATE_KEY:?}" : "${XRAY_PUBLIC_KEY:?}"
+      : "${XRAY_VISION_PORT:=8443}" : "${XRAY_REALITY_PORT:=443}" : "${XRAY_UUID_VISION:?}" : "${XRAY_UUID_REALITY:?}" : "${XRAY_DOMAIN:?}" : "${XRAY_CERT_DIR:=/usr/local/etc/xray/certs}" : "${XRAY_FALLBACK_PORT:=8080}" : "${XRAY_SNI:=www.microsoft.com}" : "${XRAY_SHORT_ID:?}" : "${XRAY_PRIVATE_KEY:?}" : "${XRAY_PUBLIC_KEY:?}"
 
       # Check for required TLS certificates first
       if [[ ! -f "${XRAY_CERT_DIR}/fullchain.pem" || ! -f "${XRAY_CERT_DIR}/privkey.pem" ]]; then
@@ -49,9 +49,9 @@ JSON
         exit 2
       fi
 
-      XRAY_REALITY_DEST="$(ensure_reality_dest "${XRAY_REALITY_DEST:-}" "${XRAY_REALITY_SNI}")"
+      XRAY_REALITY_DEST="$(ensure_reality_dest "${XRAY_REALITY_DEST:-}" "${XRAY_SNI}")"
       [[ -n "${XRAY_PRIVATE_KEY}" ]] || { core::log error "XRAY_PRIVATE_KEY required"; exit 2; }
-      local sn2; sn2="$(json_array_from_csv "${XRAY_REALITY_SNI}")"
+      local sn2; sn2="$(json_array_from_csv "${XRAY_SNI}")"
       cat >"${d}/05_inbounds.json" <<JSON
 {"inbounds":[
 {"tag":"vision","listen":"0.0.0.0","port":${XRAY_VISION_PORT},"protocol":"vless",

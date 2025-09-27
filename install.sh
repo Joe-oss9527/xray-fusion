@@ -81,8 +81,7 @@ Environment Variables:
   XRF_LOG_TARGET    Log target (file|journal) for logrotate-obs plugin
 
   Xray Configuration (Reality-only topology):
-  XRAY_REALITY_SNI  SNI domain (default: www.microsoft.com)
-  XRAY_SNI          Alias for XRAY_REALITY_SNI (for compatibility)
+  XRAY_SNI          SNI domain (default: www.microsoft.com)
   XRAY_PORT         Listen port (default: 443)
   XRAY_UUID         User UUID (auto-generated if not set)
   XRAY_*            All other Xray configuration variables (see README.md)
@@ -393,12 +392,6 @@ parse_args() {
 
 # Handle environment variable compatibility
 setup_environment() {
-    # Support common domain variable aliases
-    if [[ -n "${XRAY_SNI:-}" && -z "${XRAY_REALITY_SNI:-}" ]]; then
-        export XRAY_REALITY_SNI="${XRAY_SNI}"
-        log_debug "使用 XRAY_SNI 设置 XRAY_REALITY_SNI=${XRAY_REALITY_SNI}"
-    fi
-
     # Support common port variable aliases
     if [[ -n "${XRAY_PORT:-}" && -z "${XRAY_REALITY_PORT:-}" ]]; then
         export XRAY_REALITY_PORT="${XRAY_PORT}"
@@ -413,7 +406,7 @@ show_summary() {
     echo "  Version: ${XRAY_VERSION_REQ}"
     echo "  Install Directory: ${INSTALL_DIR}"
     [[ -n "${ENABLE_PLUGINS}" ]] && echo "  Enabled Plugins: ${ENABLE_PLUGINS}"
-    [[ -n "${XRAY_REALITY_SNI:-}" ]] && echo "  Custom SNI: ${XRAY_REALITY_SNI}"
+    [[ -n "${XRAY_SNI:-}" ]] && echo "  Custom SNI: ${XRAY_SNI}"
     [[ -n "${XRAY_PORT:-}" ]] && echo "  Custom Port: ${XRAY_PORT}"
     echo ""
     log_info "Next steps:"

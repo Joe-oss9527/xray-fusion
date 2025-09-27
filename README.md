@@ -13,12 +13,9 @@ curl -sL https://raw.githubusercontent.com/Joe-oss9527/xray-fusion/main/install.
 ### 自定义域名和端口安装
 ```bash
 # 使用自定义域名和端口
-XRAY_REALITY_SNI=your.domain.com XRAY_PORT=8443 \
-curl -sL https://raw.githubusercontent.com/Joe-oss9527/xray-fusion/main/install.sh | bash
-
-# 兼容性写法（推荐新用户使用）
 XRAY_SNI=your.domain.com XRAY_PORT=8443 \
 curl -sL https://raw.githubusercontent.com/Joe-oss9527/xray-fusion/main/install.sh | bash
+
 ```
 
 ### 高级安装
@@ -103,8 +100,7 @@ plugins/enabled/   # 启用=这里建软链
 # Reality-only 拓扑
 export XRAY_PORT=443                    # 监听端口
 export XRAY_UUID=<uuid>                 # 用户 UUID（自动生成）
-export XRAY_REALITY_SNI=www.microsoft.com  # SNI 域名
-export XRAY_SNI=www.microsoft.com       # SNI 域名（兼容性别名）
+export XRAY_SNI=www.microsoft.com       # SNI 域名
 export XRAY_REALITY_DEST=www.microsoft.com:443  # 目标地址
 export XRAY_PRIVATE_KEY=<X25519>        # 私钥（自动生成）
 export XRAY_SHORT_ID=<hex>              # Short ID（自动生成）
@@ -140,10 +136,6 @@ export XRF_INSTALL_DIR=/usr/local/xray-fusion  # 安装目录
 
 ### 如何自定义域名？
 ```bash
-# 方法1：使用标准环境变量
-XRAY_REALITY_SNI=your.domain.com curl -sL https://raw.githubusercontent.com/Joe-oss9527/xray-fusion/main/install.sh | bash
-
-# 方法2：使用兼容性别名（推荐）
 XRAY_SNI=your.domain.com curl -sL https://raw.githubusercontent.com/Joe-oss9527/xray-fusion/main/install.sh | bash
 ```
 
