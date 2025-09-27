@@ -86,12 +86,17 @@ JSON
       core::log debug "TLS certificates found" "$(printf '{"fullchain":"%s","privkey":"%s"}' "${XRAY_CERT_DIR}/fullchain.pem" "${XRAY_CERT_DIR}/privkey.pem")"
 
       XRAY_REALITY_DEST="$(ensure_reality_dest "${XRAY_REALITY_DEST:-}" "${XRAY_SNI}")"
+      core::log debug "reality destination set" "$(printf '{"reality_dest":"%s","sni":"%s"}' "${XRAY_REALITY_DEST}" "${XRAY_SNI}")"
+
       [[ -n "${XRAY_PRIVATE_KEY}" ]] || {
         core::log error "XRAY_PRIVATE_KEY required"
         exit 2
       }
+
       local sn2
       sn2="$(json_array_from_csv "${XRAY_SNI}")"
+      core::log debug "generating vision-reality config" "$(printf '{"release_dir":"%s","server_names":"%s"}' "${d}" "${sn2}")"
+
       cat > "${d}/05_inbounds.json" << JSON
 {"inbounds":[
 {"tag":"vision","listen":"0.0.0.0","port":${XRAY_VISION_PORT},"protocol":"vless",
@@ -103,6 +108,8 @@ JSON
  "streamSettings":{"network":"tcp","security":"reality","realitySettings":{"show":false,"dest":"${XRAY_REALITY_DEST}","xver":0,"serverNames":${sn2},"privateKey":"${XRAY_PRIVATE_KEY}","shortIds":["","${XRAY_SHORT_ID}"],"spiderX":"/"}},
  "sniffing":{"enabled":${sniff_bool},"destOverride":["http","tls","quic"]}}]}
 JSON
+
+      core::log debug "vision-reality inbound config written" "$(printf '{"file":"%s/05_inbounds.json"}' "${d}")"
       ;;
     *)
       core::log error "unknown topology" "$(printf '{"topology":"%s"}' "${topology}")"
@@ -110,7 +117,12 @@ JSON
       ;;
   esac
 
+  core::log debug "writing routing config" "$(printf '{"file":"%s/09_routing.json"}' "${d}")"
+
   printf '{"routing":{"domainStrategy":"IPIfNonMatch","rules":[]}}' | io::atomic_write "${d}/09_routing.json" 0640
+  core::log debug "routing config written" "$(printf '{"file":"%s/09_routing.json"}' "${d}")"
+
+  core::log debug "setting permissions" "$(printf '{"release_dir":"%s"}' "${d}")"
   chmod 0750 "${d}" || true
   chown root:xray "${d}" 2> /dev/null || true
   for f in "${d}"/*.json; do
@@ -118,21 +130,41 @@ JSON
     chmod 0640 "${f}" || true
   done
 
+  core::log debug "listing generated config files" "{}"
+  ls -la "${d}"/*.json | while read -r line; do
+    core::log debug "config file" "$(printf '{"file":"%s"}' "${line}")"
+  done
+
+  core::log debug "emitting configure_post" "$(printf '{"topology":"%s","release_dir":"%s"}' "${topology}" "${d}")"
   plugins::emit configure_post "topology=${topology}" "release_dir=${d}"
+
+  core::log debug "render_release complete" "$(printf '{"release_dir":"%s"}' "${d}")"
   echo "${d}"
 }
 
 deploy_release() {
   local d="${1}"
+  core::log debug "deploy_release started" "$(printf '{"release_dir":"%s"}' "${d}")"
+
   if [[ -x "$(xray::bin)" && "${XRF_SKIP_XRAY_TEST:-false}" != "true" ]]; then
+    core::log debug "testing xray config" "$(printf '{"confdir":"%s","xray_bin":"%s"}' "${d}" "$(xray::bin)")"
+
+    # 显示配置文件内容以供调试
+    for f in "${d}"/*.json; do
+      core::log debug "config file content" "$(printf '{"file":"%s","content":"%s"}' "${f}" "$(cat "${f}" | tr '\n' ' ')")"
+    done
+
     local test_output
     if ! test_output="$("$(xray::bin)" -test -confdir "${d}" -format json 2>&1)"; then
       local esc
       esc="${d//\"/\\\"}"
-      core::log error "xray config test failed" "$(printf '{"confdir":"%s"}' "${esc}")"
+      core::log error "xray config test failed" "$(printf '{"confdir":"%s","test_output":"%s"}' "${esc}" "${test_output}")"
       printf '%s\n' "${test_output}" >&2
       return 1
     fi
+    core::log debug "xray config test passed" "$(printf '{"confdir":"%s"}' "${d}")"
+  else
+    core::log debug "skipping xray config test" "$(printf '{"xray_bin_exists":"%s","skip_test":"%s"}' "$([[ -x "$(xray::bin)" ]] && echo true || echo false)" "${XRF_SKIP_XRAY_TEST:-false}")"
   fi
   local newdg
   newdg="$(digest_confdir "${d}")"
