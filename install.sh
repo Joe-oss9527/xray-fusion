@@ -309,8 +309,23 @@ run_xray_install() {
   # Change to installation directory
   cd "${INSTALL_DIR}"
 
-  # Run installation
-  if "./bin/xrf" install "${install_args[@]}"; then
+  # Run installation with environment variables preserved
+  if env XRAY_DOMAIN="${XRAY_DOMAIN:-}" \
+         XRAY_SNI="${XRAY_SNI:-}" \
+         XRAY_PORT="${XRAY_PORT:-}" \
+         XRAY_UUID="${XRAY_UUID:-}" \
+         XRAY_VISION_PORT="${XRAY_VISION_PORT:-}" \
+         XRAY_REALITY_PORT="${XRAY_REALITY_PORT:-}" \
+         XRAY_FALLBACK_PORT="${XRAY_FALLBACK_PORT:-}" \
+         XRAY_UUID_VISION="${XRAY_UUID_VISION:-}" \
+         XRAY_UUID_REALITY="${XRAY_UUID_REALITY:-}" \
+         XRAY_CERT_DIR="${XRAY_CERT_DIR:-}" \
+         XRAY_PRIVATE_KEY="${XRAY_PRIVATE_KEY:-}" \
+         XRAY_SHORT_ID="${XRAY_SHORT_ID:-}" \
+         XRAY_SNIFFING="${XRAY_SNIFFING:-}" \
+         XRAY_REALITY_DEST="${XRAY_REALITY_DEST:-}" \
+         XRF_DEBUG="${DEBUG:-}" \
+         "./bin/xrf" install "${install_args[@]}"; then
     log_info "Xray installation completed successfully"
     [[ -n "${INSTALL_MARKER}" && -f "${INSTALL_MARKER}" ]] && rm -f "${INSTALL_MARKER}"
     INSTALL_MARKER=""
