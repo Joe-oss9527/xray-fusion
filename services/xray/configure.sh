@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
+set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 . "${HERE}/lib/core.sh"
 . "${HERE}/lib/plugins.sh"
 . "${HERE}/modules/io.sh"
 . "${HERE}/modules/state.sh"
 . "${HERE}/services/xray/common.sh"
+
+core::log debug "configure.sh started" "$(printf '{"args":"%s"}' "$*")"
 
 validate_shortid() { [[ "${#1}" -le 16 && $((${#1} % 2)) -eq 0 && "${1}" =~ ^[0-9a-fA-F]+$ ]]; }
 json_array_from_csv() {
@@ -69,13 +72,18 @@ render_release() {
 JSON
       ;;
     vision-reality)
+      core::log debug "configuring vision-reality topology" "{}"
       : "${XRAY_VISION_PORT:=8443}" : "${XRAY_REALITY_PORT:=443}" : "${XRAY_UUID_VISION:?}" : "${XRAY_UUID_REALITY:?}" : "${XRAY_DOMAIN:?}" : "${XRAY_CERT_DIR:=/usr/local/etc/xray/certs}" : "${XRAY_FALLBACK_PORT:=8080}" : "${XRAY_SNI:=www.microsoft.com}" : "${XRAY_SHORT_ID:?}" : "${XRAY_PRIVATE_KEY:?}" : "${XRAY_PUBLIC_KEY:?}"
 
+      core::log debug "vision-reality variables set" "$(printf '{"vision_port":"%s","reality_port":"%s","domain":"%s","cert_dir":"%s"}' "${XRAY_VISION_PORT}" "${XRAY_REALITY_PORT}" "${XRAY_DOMAIN}" "${XRAY_CERT_DIR}")"
+
       # Check for required TLS certificates first
+      core::log debug "checking TLS certificates" "$(printf '{"cert_dir":"%s"}' "${XRAY_CERT_DIR}")"
       if [[ ! -f "${XRAY_CERT_DIR}/fullchain.pem" || ! -f "${XRAY_CERT_DIR}/privkey.pem" ]]; then
         core::log error "vision-reality topology requires TLS certificates" "$(printf '{"cert_dir":"%s","domain":"%s","suggestion":"Use: --enable-plugins cert-auto"}' "${XRAY_CERT_DIR}" "${XRAY_DOMAIN}")"
         exit 2
       fi
+      core::log debug "TLS certificates found" "$(printf '{"fullchain":"%s","privkey":"%s"}' "${XRAY_CERT_DIR}/fullchain.pem" "${XRAY_CERT_DIR}/privkey.pem")"
 
       XRAY_REALITY_DEST="$(ensure_reality_dest "${XRAY_REALITY_DEST:-}" "${XRAY_SNI}")"
       [[ -n "${XRAY_PRIVATE_KEY}" ]] || {
