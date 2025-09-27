@@ -71,13 +71,20 @@ plugins::emit() {
   shift || true
   local args=("${@}")
   local id meta hooks fn
+  core::log debug "emitting plugin event" "$(printf '{"event":"%s","args":"%s"}' "${event}" "${args[*]}")"
   for id in "${__PLUG_IDS[@]}"; do
     meta="${__PLUG_META[${id}]}"
     hooks="${meta#*|}"
     hooks="${hooks#*|}"
     case " ${hooks} " in *" ${event} "*) ;; *) continue ;; esac
     fn="$(plugins::fn_prefix "${id}")::${event}"
-    if declare -F "${fn}" > /dev/null 2>&1; then "${fn}" "${args[@]}" || true; fi
+    if declare -F "${fn}" > /dev/null 2>&1; then
+      core::log debug "executing plugin hook" "$(printf '{"plugin":"%s","event":"%s","function":"%s"}' "${id}" "${event}" "${fn}")"
+      "${fn}" "${args[@]}" || {
+        core::log error "plugin hook failed" "$(printf '{"plugin":"%s","event":"%s","rc":"%s"}' "${id}" "${event}" "$?")"
+        return 1
+      }
+    fi
   done
 }
 

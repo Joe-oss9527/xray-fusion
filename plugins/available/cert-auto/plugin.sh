@@ -32,7 +32,7 @@ cert_auto::configure_pre() {
   local topology="" release_dir=""
   for kv in "${@}"; do case "${kv}" in topology=*) topology="${kv#*=}" ;; release_dir=*) release_dir="${kv#*=}" ;; esac done
 
-  core::log debug "cert-auto configure_pre called" "$(printf '{"topology":"%s","release_dir":"%s"}' "${topology}" "${release_dir}")"
+  core::log debug "cert-auto configure_pre called" "$(printf '{"topology":"%s","release_dir":"%s","XRAY_DOMAIN":"%s"}' "${topology}" "${release_dir}" "${XRAY_DOMAIN:-unset}")"
 
   [[ "${topology}" == "vision-reality" ]] || {
     core::log debug "cert-auto skipping - topology is not vision-reality" "{}"
@@ -41,8 +41,8 @@ cert_auto::configure_pre() {
 
   local domain="${XRAY_DOMAIN:-}"
   [[ -n "${domain}" ]] || {
-    core::log error "cert-auto XRAY_DOMAIN not set" "{}"
-    return 0
+    core::log error "cert-auto requires XRAY_DOMAIN environment variable for vision-reality topology" "$(printf '{"example":"XRAY_DOMAIN=your-domain.com bin/xrf install --topology vision-reality"}')"
+    return 1
   }
 
   # Security: Validate domain name

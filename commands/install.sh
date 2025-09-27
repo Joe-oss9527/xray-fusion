@@ -19,7 +19,7 @@ Env:
   # reality-only
   XRAY_PORT=443 XRAY_UUID=<uuid> XRAY_SNI=www.microsoft.com[,alt] XRAY_REALITY_DEST=www.microsoft.com XRAY_PRIVATE_KEY=<X25519> XRAY_SHORT_ID=<hex>
   # vision-reality
-  XRAY_VISION_PORT=8443 XRAY_REALITY_PORT=443 XRAY_FALLBACK_PORT=8080 XRAY_UUID_VISION=<uuid> XRAY_UUID_REALITY=<uuid> XRAY_DOMAIN=example.com XRAY_CERT_DIR=/usr/local/etc/xray/certs XRAY_PRIVATE_KEY=<X25519> XRAY_SHORT_ID=<hex>
+  XRAY_VISION_PORT=8443 XRAY_REALITY_PORT=443 XRAY_FALLBACK_PORT=8080 XRAY_UUID_VISION=<uuid> XRAY_UUID_REALITY=<uuid> XRAY_DOMAIN=<your-domain> XRAY_CERT_DIR=/usr/local/etc/xray/certs XRAY_PRIVATE_KEY=<X25519> XRAY_SHORT_ID=<hex>
 EOF
 }
 
@@ -64,7 +64,8 @@ main() {
   "${HERE}/services/xray/install.sh" --version "${version}"
 
   if [[ "${topology}" == "vision-reality" ]]; then
-    : "${XRAY_VISION_PORT:=8443}" : "${XRAY_REALITY_PORT:=443}" : "${XRAY_DOMAIN:=example.com}" : "${XRAY_CERT_DIR:=/usr/local/etc/xray/certs}" : "${XRAY_FALLBACK_PORT:=8080}"
+    core::log debug "configuring vision-reality topology" "$(printf '{"XRAY_DOMAIN":"%s"}' "${XRAY_DOMAIN:-unset}")"
+    : "${XRAY_VISION_PORT:=8443}" : "${XRAY_REALITY_PORT:=443}" : "${XRAY_CERT_DIR:=/usr/local/etc/xray/certs}" : "${XRAY_FALLBACK_PORT:=8080}"
     if [[ -z "${XRAY_UUID_VISION:-}" ]]; then XRAY_UUID_VISION="$("$(xray::bin)" uuid 2> /dev/null || uuidgen)"; fi
     if [[ -z "${XRAY_UUID_REALITY:-}" ]]; then XRAY_UUID_REALITY="$("$(xray::bin)" uuid 2> /dev/null || uuidgen)"; fi
   else
