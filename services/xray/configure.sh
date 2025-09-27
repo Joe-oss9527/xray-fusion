@@ -73,7 +73,7 @@ JSON
 
       # Check for required TLS certificates first
       if [[ ! -f "${XRAY_CERT_DIR}/fullchain.pem" || ! -f "${XRAY_CERT_DIR}/privkey.pem" ]]; then
-        core::log error "vision-reality topology requires TLS certificates" "$(printf '{"cert_dir":"%s","domain":"%s","suggestion":"Use cert-acme plugin or provide certificates manually"}' "${XRAY_CERT_DIR}" "${XRAY_DOMAIN}")"
+        core::log error "vision-reality topology requires TLS certificates" "$(printf '{"cert_dir":"%s","domain":"%s","suggestion":"Use: --enable-plugins cert-auto"}' "${XRAY_CERT_DIR}" "${XRAY_DOMAIN}")"
         exit 2
       fi
 

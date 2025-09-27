@@ -72,7 +72,7 @@ Examples:
 
   # Advanced installation with plugins
   curl -sL https://raw.githubusercontent.com/Joe-oss9527/xray-fusion/main/install.sh | bash -s -- \\
-    --topology vision-reality --enable-plugins cert-acme,logrotate-obs
+    --topology vision-reality --enable-plugins cert-auto,logrotate-obs
 
 Environment Variables:
   XRF_REPO_URL      Repository URL (default: https://github.com/Joe-oss9527/xray-fusion.git)

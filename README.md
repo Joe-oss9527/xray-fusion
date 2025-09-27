@@ -32,7 +32,7 @@ curl -sL https://raw.githubusercontent.com/Joe-oss9527/xray-fusion/main/install.
 # Vision + Reality 拓扑，启用证书和日志插件
 curl -sL https://raw.githubusercontent.com/Joe-oss9527/xray-fusion/main/install.sh | bash -s -- \
   --topology vision-reality \
-  --enable-plugins cert-acme,logrotate-obs
+  --enable-plugins cert-auto,logrotate-obs
 ```
 
 ### 安装选项
@@ -77,8 +77,7 @@ bin/xrf links
 
 ### Vision + Reality（带证书）
 ```bash
-bin/xrf plugin enable cert-acme
-XRAY_DOMAIN="your.domain" bin/xrf install --topology vision-reality
+XRAY_DOMAIN="your.domain.com" ./install.sh --topology vision-reality --enable-plugins cert-auto
 ```
 
 ### 文件日志 + logrotate（推荐生产）
@@ -96,7 +95,7 @@ modules/{io.sh,state.sh,net/network.sh,fw/*,cert/*,user/user.sh}
 services/xray/{common.sh,install.sh,configure.sh,systemd-unit.sh,client-links.sh}
 commands/{install.sh,status.sh,uninstall.sh,plugin.sh}
 packaging/systemd/xray.service
-plugins/available/{cert-acme,firewall,links-qr,logrotate-obs}/plugin.sh
+plugins/available/{cert-auto,firewall,links-qr,logrotate-obs}/plugin.sh
 plugins/enabled/   # 启用=这里建软链
 ```
 
