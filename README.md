@@ -134,7 +134,7 @@ XRAY_SNI=www.microsoft.com  # Reality 伪装域名
 - **8444**: Caddy HTTPS（自动证书管理，避免冲突）
 - **8080**: Caddy Fallback（处理非代理流量）
 
-**TLS 版本**: Vision 使用 TLS 1.3（符合 Xray-core 官方推荐）
+**TLS 配置**: Vision 使用 Go 自动协商 TLS 版本（支持 TLS 1.2+，优先 TLS 1.3，符合 Xray-core 官方推荐）
 
 ## 系统要求
 
