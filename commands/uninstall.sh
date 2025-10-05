@@ -23,20 +23,40 @@ uninstall_caddy() {
     systemctl disable caddy || true
   fi
 
-  # Stop cert-sync timer and service if running
+  # Stop and disable cert-reload timer/service (current timer-based approach)
+  systemctl stop cert-reload.timer 2> /dev/null || true
+  systemctl stop cert-reload.service 2> /dev/null || true
+  systemctl disable cert-reload.timer 2> /dev/null || true
+
+  # Stop and disable old path-based units (deprecated)
+  systemctl stop cert-reload.path 2> /dev/null || true
+  systemctl disable cert-reload.path 2> /dev/null || true
+
+  # Stop and disable very old timer units (backward compatibility)
   systemctl stop caddy-cert-sync.timer 2> /dev/null || true
   systemctl stop caddy-cert-sync.service 2> /dev/null || true
   systemctl disable caddy-cert-sync.timer 2> /dev/null || true
   systemctl disable caddy-cert-sync.service 2> /dev/null || true
 
-  # Remove Caddy systemd service
+  # Remove systemd units (current timer-based)
   _rm "/etc/systemd/system/caddy.service"
+  _rm "/etc/systemd/system/cert-reload.timer"
+  _rm "/etc/systemd/system/cert-reload.service"
+
+  # Remove deprecated path-based units
+  _rm "/etc/systemd/system/cert-reload.path"
+  _rm "/etc/systemd/system/cert-reload.target"
+
+  # Remove old timer-based units (backward compatibility)
   _rm "/etc/systemd/system/caddy-cert-sync.service"
   _rm "/etc/systemd/system/caddy-cert-sync.timer"
 
   # Reload systemd daemon and reset failed states
   systemctl daemon-reload || true
   systemctl reset-failed caddy.service 2> /dev/null || true
+  systemctl reset-failed cert-reload.timer 2> /dev/null || true
+  systemctl reset-failed cert-reload.service 2> /dev/null || true
+  systemctl reset-failed cert-reload.path 2> /dev/null || true
   systemctl reset-failed caddy-cert-sync.service 2> /dev/null || true
   systemctl reset-failed caddy-cert-sync.timer 2> /dev/null || true
 

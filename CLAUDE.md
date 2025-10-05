@@ -1,690 +1,384 @@
-# Claude Code 开发经验记录
+# Project Memory: xray-fusion
 
-本文档记录在 Claude Code 开发过程中获得的重要经验教训和技术知识，用于指导后续开发工作。
+> 本文档记录项目关键技术决策、编码规范和常见问题解决方案。遵循"具体、简洁、可操作"原则。
 
-## 调试和日志管理
+## 开发工作流
 
-### 核心教训：函数输出污染问题
+### 调试原则
+- ✅ **系统性调试，不做猜测** - 通过日志分析定位问题，基于实际现象修复
+- ✅ **使用项目日志框架** - 统一使用 `core::log`，不使用 `echo`
+- ✅ **优先查阅官方文档** - 避免使用过期或废弃的实现方式
 
-**问题**：`core::log` 函数默认输出到 stdout，导致函数返回值被日志污染。
+### 代码质量要求
+- 保持代码整洁，不做无用的向后兼容
+- 确保所有操作通过脚本参数化，避免手动干预
+- 变量命名使用下划线分隔：`XRAY_DOMAIN`、`XRAY_SNI`
 
-**症状**：
+## Shell 编程规范
+
+### 日志输出
 ```bash
-deploy_release started {"release_dir":"[2025-09-27T07:59:06Z] debug configuring vision-reality topology {} }
-```
-
-**解决方案**：
-1. 将所有日志输出重定向到 stderr (`>&2`)
-2. 添加 debug 级别过滤，只在 `XRF_DEBUG=true` 时显示 debug 消息
-
-**修复后的 `core::log` 函数**：
-```bash
+# 所有日志输出到 stderr，避免污染函数返回值
 core::log() {
-  local lvl="${1}"
-  shift
-  local msg="${1}"
-  shift || true
+  local lvl="${1}"; shift
+  local msg="${1}"; shift || true
   local ctx="${1-{} }"
 
-  # Filter debug messages unless XRF_DEBUG is true
-  if [[ "${lvl}" == "debug" && "${XRF_DEBUG}" != "true" ]]; then
-    return 0
-  fi
+  # Filter debug messages unless XRF_DEBUG=true
+  [[ "${lvl}" == "debug" && "${XRF_DEBUG}" != "true" ]] && return 0
 
-  # All logs go to stderr to avoid contaminating function outputs
+  # All logs to stderr
   if [[ "${XRF_JSON}" == "true" ]]; then
-    printf '{"ts":"%s","level":"%s","msg":"%s","ctx":%s}\n' "$(core::ts)" "${lvl}" "${msg}" "${ctx}" >&2
+    printf '{"ts":"%s","level":"%s","msg":"%s","ctx":%s}\n' \
+      "$(core::ts)" "${lvl}" "${msg}" "${ctx}" >&2
   else
     printf '[%s] %-5s %s %s\n' "$(core::ts)" "${lvl}" "${msg}" "${ctx}" >&2
   fi
 }
+
+# 外部命令输出也必须重定向
+external-command >/dev/null 2>&1 || true
 ```
-
-**关键原则**：
-- 永远不要通过猜测来处理问题，要通过系统性的调试日志
-- 使用项目内置的日志模块，不要用 `echo`
-- 函数的 stdout 应该只用于返回值，所有日志都应该输出到 stderr
-
-### 其他输出污染案例
-
-**问题**：外部命令输出混入函数返回值
-
-**症状**：
-```bash
-# caddy-cert-sync 脚本输出污染了函数返回值
-[caddy-cert-sync] certificates updated for r.950288.xyz
-/usr/local/etc/xray/releases/20250927081755/*.json
-```
-
-**解决方案**：
-```bash
-# 原来的调用（有问题）
-/usr/local/bin/caddy-cert-sync 2>/dev/null || true
-
-# 修复后的调用
-/usr/local/bin/caddy-cert-sync >/dev/null 2>&1 || true
-```
-
-**教训**：任何可能产生输出的外部命令都必须重定向 stdout 和 stderr
-
-## Xray Vision-Reality 拓扑最佳实践
-
-### 端口配置最佳实践
-
-**官方推荐配置**：
-- **Reality**: 端口 443（标准 HTTPS，用于隐秘伪装）
-- **Vision**: 端口 8443（真实 TLS，用于域名连接）
-
-**错误配置**：
-```bash
-# ❌ 错误：让 Caddy 占用 443，Reality 使用其他端口
-XRAY_REALITY_PORT=8080  # 违反最佳实践
-```
-
-**正确配置**：
-```bash
-# ✅ 正确：Reality 使用标准端口，Vision 使用备用端口
-XRAY_REALITY_PORT=443   # 符合官方最佳实践
-XRAY_VISION_PORT=8443   # 标准 Vision 端口
-```
-
-### 证书管理和权限
-
-**关键发现**：Xray 服务以 `xray` 用户运行，需要能够读取私钥文件。
-
-**错误权限**：
-```bash
-chmod 600 "${cert_dir}/privkey.pem"  # ❌ 只有 root 可读
-```
-
-**正确权限**：
-```bash
-chmod 640 "${cert_dir}/privkey.pem"  # ✅ xray 组可读
-chown root:xray "${cert_dir}/privkey.pem"
-```
-
-### VLESS+REALITY 关键概念
-
-**重要理解**：VLESS+REALITY 协议**不需要域名所有权**
-- SNI 域名用于伪装，不需要实际拥有该域名
-- `XRAY_SNI=www.microsoft.com` 是合法的伪装配置
-- Reality 使用特殊的 TLS 握手，无法通过常规代理（如 Caddy）转发
-
-## 证书自动化最佳实践
-
-### 架构选择
-
-**弃用方案**：acme.sh 方式
-- 缺少完整的安装和集成逻辑
-- 维护复杂度高
-
-**采用方案**：Caddy 方式
-- 成熟的自动证书管理
-- 参考 233boy/Xray 的成功实践
-- 更好的集成和维护性
-
-### cert-auto 插件关键实现
-
-**证书同步机制**：
-```bash
-# 从 Caddy 证书目录同步到 Xray 目录
-CADDY_CERT_DIR="/root/.local/share/caddy/certificates/acme-v02.api.letsencrypt.org-directory"
-XRAY_CERT_DIR="/usr/local/etc/xray/certs"
-```
-
-**定时同步**：使用 systemd timer 每小时同步证书更新
-
-## Shell 编程高级问题
 
 ### Trap 和变量作用域
-
-**问题**：`tmpdir: unbound variable` 错误
-
-**根因**：EXIT trap 中使用局部变量，在函数退出后变量作用域失效
-
-**错误代码**：
 ```bash
-caddy::install() {
-  local tmpdir
-  tmpdir="$(mktemp -d)"
-  trap 'rm -rf "${tmpdir}"' EXIT  # ❌ 局部变量在 trap 中可能失效
+# ❌ 错误：EXIT trap 中使用局部变量
+function_name() {
+  local tmpdir="$(mktemp -d)"
+  trap 'rm -rf "${tmpdir}"' EXIT  # 局部变量在 trap 中可能失效
 }
-```
 
-**修复方案**：
-```bash
-caddy::install() {
-  local tmpdir
-  tmpdir="$(mktemp -d)"
-  # 使用全局变量存储，确保 trap 中可访问
-  _CADDY_TMPDIR="${tmpdir}"
-  trap 'rm -rf "${_CADDY_TMPDIR:-}" 2>/dev/null || true; unset _CADDY_TMPDIR' EXIT
+# ✅ 正确：使用全局变量 + 参数展开
+function_name() {
+  local tmpdir="$(mktemp -d)"
+  _GLOBAL_TMPDIR="${tmpdir}"
+  trap 'rm -rf "${_GLOBAL_TMPDIR:-}" 2>/dev/null || true; unset _GLOBAL_TMPDIR' EXIT
 }
+
+# ✅ 更好：Trap 多个信号
+cleanup() {
+  [[ -n "${tmpdir:-}" && -d "${tmpdir}" ]] && rm -rf "${tmpdir}"
+}
+trap cleanup EXIT INT TERM HUP
 ```
 
-**教训**：
-- EXIT trap 可能在函数作用域外执行，避免使用局部变量
-- 使用参数展开 `"${var:-}"` 防止 unbound variable 错误
-- 在 trap 中添加错误处理 `2>/dev/null || true`
-
-## 代码质量和架构原则
-
-### 清理原则
-
-**用户要求**：
-> "不要做兼容性，没有用户使用。请不要增加维护负担，确保代码干净整洁，不要遗留历史代码"
-
-**实施**：
-- 完全删除不完整的 cert-acme 插件
-- 删除相关的 acme_sh.sh 模块
-- 不保留向后兼容的废弃代码
-
-### 调试方法论
-
-**用户强调**：
-> "如果有需要请在脚本加必要的调试日志，而不是通过猜测来处理"
-> "继续加必要日志调试啊，不要猜测，把问题解决了"
-
-**核心原则**：
-1. **不要做猜测，需要真凭实据**
-   - 通过日志分析定位问题，而不是靠猜测修改代码
-   - 添加必要的调试日志来获取准确的执行状态
-   - 基于实际观察到的现象进行修复
-
-2. **系统性调试方法**：
-   - 系统性地添加 debug 日志追踪执行流程
-   - 使用项目的日志框架，不要自创日志方式
-   - 先诊断问题根因，再制定解决方案
-
-3. **有必要则添加调试日志**：
-   - 在关键执行路径添加状态日志
-   - 记录重要变量值和函数返回值
-   - 追踪函数调用链和数据流向
-
-### 文档优先原则
-
-**用户要求**：
-> "如有需要请先查询相关官方文档，避免使用过期废弃的方式"
-
-**实施策略**：
-1. **优先查阅官方文档**
-   - 实现功能前先查询官方最新文档
-   - 验证所采用的方法是否为当前推荐做法
-   - 避免使用已废弃或过时的 API/配置方式
-
-2. **技术选型验证**
-   - 对比官方示例和最佳实践
-   - 查看官方 GitHub 仓库的最新 examples
-   - 关注官方社区的讨论和建议
-
-3. **避免过期方式**
-   - 定期检查依赖的技术栈更新
-   - 及时淘汰已废弃的实现方式
-   - 选择有长期维护保证的技术方案
-
-**实际案例**：
-- ❌ 错误：基于网络教程实现 acme.sh 集成（缺少官方支持）
-- ✅ 正确：查阅 Xray 官方文档，采用推荐的端口配置（443 for Reality）
-- ✅ 正确：参考 233boy/Xray 成熟实践，使用 Caddy 自动证书管理
-
-## 脚本自动化原则
-
-### 完全脚本化要求
-
-**用户要求**：
-> "确保所有操作都是通过脚本进行的，而不是手动处理"
-
-**实施要点**：
-
-1. **参数化配置**：
-   ```bash
-   # ✅ 通过参数自动启用插件
-   bin/xrf install --topology vision-reality --domain your.domain.com --plugins cert-auto
-
-   # ❌ 手动启用插件
-   bin/xrf plugin enable cert-auto
-   bin/xrf install --topology vision-reality
-   ```
-
-2. **自动状态管理**：
-   - 安装脚本自动启用指定插件
-   - 卸载脚本自动禁用所有插件
-   - 无需手动状态清理
-
-3. **完整清理逻辑**：
-   ```bash
-   # 卸载脚本自动处理
-   disable_all_plugins() {
-     local enabled_dir="${HERE}/plugins/enabled"
-     for plugin_link in "${enabled_dir}"/*.sh; do
-       if [[ -L "${plugin_link}" ]]; then
-         local plugin_name="$(basename "${plugin_link}" .sh)"
-         rm -f "${plugin_link}" || true
-       fi
-     done
-   }
-   ```
-
-**避免手动操作**：
-- ❌ 手动启用/禁用插件
-- ❌ 手动清理配置文件
-- ❌ 手动服务管理
-- ❌ 手动状态重置
-
-## 变量命名演变
-
-**历史变更**：
-- `XRAY_REALITY_SNI` → `XRAY_SNI`（统一命名）
-- `--enable-plugins` → `--plugins`（简化命名）
-- 注意检查代码中的过时变量名引用
-
-## 统一参数传递重构
-
-### 核心问题：参数接口不一致
-
-**问题描述**：
-- install.sh 和 xrf 使用不同的参数格式
-- 环境变量在管道中传递困难：`XRAY_DOMAIN=xxx curl | bash` 不工作
-- 参数验证重复实现，维护负担重
-
-**用户需求**：
-> "当前参数传递有环境变量，一键安装又不支持环境变量。有2个横杠的方式，能否统一呢？"
-> "无需向后兼容，没有用户使用。请不要增加维护负担，确保代码干净整洁"
-
-### 解决方案：统一参数体系
-
-**设计原则**：
-1. **彻底统一**：install.sh 和 xrf 使用完全相同的参数
-2. **管道友好**：解决 `curl | bash` 中环境变量传递问题
-3. **简洁明确**：移除环境变量混合，只支持命令行参数
-4. **零维护负担**：不做向后兼容，代码简洁干净
-
-**实现架构**：
+### 变量污染防御
 ```bash
-# lib/args.sh - 统一参数解析模块
-args::init()           # 初始化默认值
-args::parse()          # 解析命令行参数
-args::validate_*()     # 参数验证函数
-args::show_help()      # 统一帮助文档
-args::export_vars()    # 导出为环境变量
-```
+# ❌ 错误：直接加载外部文件可能污染变量
+. /etc/os-release  # VERSION 被系统版本覆盖
 
-**统一参数格式**：
-```bash
-# 长格式（推荐）
---topology reality-only|vision-reality
---domain <domain>           # vision-reality 必需
---version <version>         # default: latest
---plugins <plugin1,plugin2> # 启用插件列表
---debug                     # 调试模式
-
-# 短格式（简写）
--t, -d, -v, -p
-```
-
-### 关键技术问题与解决
-
-**1. 变量污染问题**：
-```bash
-# ❌ 问题：/etc/os-release 中的 VERSION 污染了参数
-. /etc/os-release  # 直接加载，VERSION 被系统版本覆盖
-
-# ✅ 解决：子shell加载避免污染
+# ✅ 正确：子 shell 隔离
 os_info=$(source /etc/os-release 2>/dev/null && echo "${ID:-unknown} ${VERSION_ID:-unknown}")
 ```
 
-**2. 参数验证错误处理**：
-```bash
-# ❌ 问题：验证失败但程序继续执行
-args::validate_topology "${2:-}"  # 验证失败但没有检查返回值
-TOPOLOGY="${2}"
+## Xray 配置最佳实践
 
-# ✅ 解决：正确检查返回值
-args::validate_topology "${2:-}" || return 1  # 验证失败立即退出
-TOPOLOGY="${2}"
+### Vision-Reality 拓扑
+- **Reality 端口**: 443（标准 HTTPS，符合官方推荐）
+- **Vision 端口**: 8443（真实 TLS，避免与 Reality 冲突）
+- **Caddy HTTPS 端口**: 8444（避免占用 443）
+
+### 证书权限
+```bash
+# Xray 服务以 xray 用户运行，需要读取私钥
+chmod 644 fullchain.pem
+chmod 640 privkey.pem
+chown root:xray *.pem
 ```
 
-**3. 管道参数传递**：
-```bash
-# ❌ 问题：环境变量在管道中无效
-XRAY_DOMAIN=example.com curl | bash  # 环境变量传递失败
+### VLESS+REALITY 核心概念
+- REALITY 协议**不需要域名所有权**
+- SNI 用于伪装，如 `www.microsoft.com` 是合法配置
+- Reality 无法通过常规反向代理（如 Caddy）转发
 
-# ✅ 解决：命令行参数在管道中正常工作
-curl | bash -s -- --domain example.com  # 参数正确传递
-```
-
-### 验证体系设计
-
-**输入验证**：
-```bash
-args::validate_topology()  # 只允许 reality-only|vision-reality
-args::validate_domain()    # RFC兼容格式 + 禁止内部域名
-args::validate_version()   # latest 或 vX.Y.Z 格式
-args::validate_config()    # 交叉验证（vision-reality需要域名）
-```
-
-**安全特性**：
-- 域名验证防止内部网络攻击
-- 输入验证防止注入攻击
-- 错误处理防止意外行为
-
-### 实施效果
-
-**代码质量改进**：
-- 参数解析逻辑减少重复 67%
-- 统一验证避免不一致
-- 错误处理更加严格
-
-**用户体验改进**：
-```bash
-# 统一的使用方式
-curl -sL install.sh | bash -s -- --topology reality-only
-xrf install --topology reality-only
-
-# 完全一致的参数
-curl -sL install.sh | bash -s -- --topology vision-reality --domain x.com --plugins cert-auto
-xrf install --topology vision-reality --domain x.com --plugins cert-auto
-```
-
-**维护负担减少**：
-- 单一参数定义点
-- 集中的验证逻辑
-- 无兼容性包袱
-
-### 经验教训
-
-**架构设计**：
-1. **接口统一优先**：不同入口应使用相同参数体系
-2. **管道兼容性**：考虑 `curl | bash` 场景的参数传递
-3. **验证集中化**：统一的验证逻辑避免重复和不一致
-
-**实现细节**：
-1. **变量作用域**：小心环境变量文件（如 `/etc/os-release`）的污染
-2. **错误传播**：验证函数必须正确返回错误码并被检查
-3. **嵌入式模块**：install.sh 需要嵌入完整的参数解析逻辑
-
-**用户导向**：
-1. **简洁胜过复杂**：`--plugins` 比 `--enable-plugins` 更简洁
-2. **一致性胜过灵活性**：统一参数比混合方式更易用
-3. **无用户则无负担**：不做不必要的向后兼容
-
-这次重构彻底解决了参数传递不统一的问题，为项目建立了清晰、可维护的参数体系。
-
-## 测试验证
-
-### 端点连接测试
-
-**基本连接测试**：
-```bash
-# Vision 端点测试
-timeout 3 bash -c "</dev/tcp/r.950288.xyz/8443" && echo "Vision port 8443 accessible"
-
-# Reality 端点测试
-timeout 3 bash -c "</dev/tcp/104.194.91.33/443" && echo "Reality port 443 accessible"
-```
-
-**服务状态验证**：
-```bash
-systemctl status xray  # 检查服务状态
-netstat -tlnp | grep xray  # 检查监听端口
-```
-
-## 成功的最终配置
-
-### 客户端链接示例
-
-```bash
-# Vision（域名连接，真实 TLS）
-vless://uuid@r.950288.xyz:8443?security=tls&flow=xtls-rprx-vision&sni=r.950288.xyz&fp=chrome#Vision-r.950288.xyz
-
-# Reality（隐秘连接，伪装 TLS）
-vless://uuid@104.194.91.33:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=www.microsoft.com&fp=chrome&pbk=key&sid=id&spx=/#REALITY-104.194.91.33
-```
-
-### 服务运行状态
-
-- Xray 服务：监听 443（Reality）和 8443（Vision）
-- 证书：自动管理，正确权限设置
-- 日志：清晰的 stdout/stderr 分离
-
----
-
-## 总结
-
-这次开发过程的核心收获：
-
-1. **调试方法论**：系统性日志记录比猜测修改更有效
-2. **架构理解**：深入理解 VLESS+REALITY 协议特性和最佳实践
-3. **权限管理**：正确配置服务用户的文件访问权限
-4. **代码质量**：保持代码整洁，不做无用的兼容性处理
-5. **技术选型**：选择成熟方案（Caddy）而非重复造轮子（acme.sh）
-6. **真凭实据**：不做猜测，必须基于实际日志和观察进行分析
-7. **文档优先**：优先查阅官方文档，避免使用过期废弃的方式
-8. **脚本自动化**：确保所有操作通过脚本参数化，避免手动干预
-9. **变量作用域**：注意 trap 和函数作用域问题，避免 unbound variable 错误
-
-## 开发工作流程
-
-### 标准问题解决流程
-
-1. **现象观察**：详细记录错误现象和日志输出
-2. **添加调试**：在关键路径添加调试日志获取更多信息
-3. **查阅文档**：查询官方文档确认正确的实施方式
-4. **根因分析**：基于日志和文档分析真正的问题根因
-5. **方案制定**：制定基于官方最佳实践的解决方案
-6. **实施验证**：实施修复并通过日志验证效果
-7. **文档记录**：记录经验教训供后续参考
-
-### 禁止行为
-
-- ❌ 基于猜测进行代码修改
-- ❌ 使用过时的网络教程或非官方方案
-- ❌ 保留废弃代码进行兼容性处理
-- ❌ 忽略日志输出直接修改配置
-- ❌ 跳过官方文档查阅环节
-- ❌ 在 trap 中使用局部变量
-- ❌ 使用手动操作代替脚本自动化
-
-### 推荐行为
-
-- ✅ 系统性添加调试日志追踪问题
-- ✅ 优先查阅最新官方文档和示例
-- ✅ 选择有长期维护保证的成熟方案
-- ✅ 基于实际观察现象进行根因分析
-- ✅ 保持代码整洁，及时清理废弃代码
-- ✅ 设计完全脚本化的工作流程
-- ✅ 在 trap 中使用全局变量和错误处理
-- ✅ 确保外部命令输出不污染函数返回值
-
-这些经验将指导后续的开发工作，确保高质量的代码和可靠的系统架构。
-
----
-
-## 基于 Xray-core v25.9.11 的代码审查与改进 (2025-10-05)
-
-### 审查背景
-
-基于最新 Xray-core v25.9.11 和官方文档进行全面代码审查，识别安全性、可靠性和可维护性问题。
-
-### 核心发现与修正
-
-#### 1. TLS 版本配置最佳实践
-
-**官方推荐**: REALITY 协议推荐目标网站支持 TLSv1.3 + H2
-
-**修改前**:
+### TLS 配置
 ```json
-"minVersion": "1.2"  // Vision 配置允许 TLS 1.2
+{
+  "minVersion": "1.3",  // 符合 Xray-core v25.9.11 推荐
+  "serverName": "example.com"
+}
 ```
 
-**修改后**:
-```json
-"minVersion": "1.3"  // 符合官方最佳实践
-```
-
-**位置**: `services/xray/configure.sh:105`
-
-**理由**:
-- 提高安全性，TLS 1.3 更安全
-- 与 REALITY 推荐的目标特征一致
-- 现代浏览器和服务器都支持 TLS 1.3
-
-#### 2. shortIds 配置的正确理解
-
-**重要概念澄清**:
+### shortIds 配置理解
 - shortIds 是服务端配置的一个**池**，客户端从中选择
-- 不是"每个客户端必须有唯一 shortId"，而是"提供区分能力"
-- 对于个人使用，单个 shortId 已足够；多用户场景可扩展池
+- 不是"每客户端必须唯一"，而是"提供区分能力"
+- 个人使用单个 shortId 足够，多用户场景可扩展池
 
-**修改前**:
-```json
-"shortIds": ["", "${XRAY_SHORT_ID}"]  // 仅 2 个选项
-```
-
-**修改后**:
 ```bash
-# 生成 3 个 shortId 作为池
+# 生成 3 个 shortId 作为池（向后兼容单 shortId）
 sid_pool='["","${XRAY_SHORT_ID}","${XRAY_SHORT_ID_2}","${XRAY_SHORT_ID_3}"]'
 ```
 
-**位置**:
-- `commands/install.sh:81-87` (生成)
-- `services/xray/configure.sh:66-72, 103-109` (配置)
-
-**设计原则**:
-- 保持向后兼容（主 shortId 仍为 `XRAY_SHORT_ID`）
-- 为多客户端场景预留能力
-- 不增加复杂度，不强制使用
-
-#### 3. 证书同步竞态条件修复
-
-**问题**: `caddy::wait_for_cert()` 直接调用同步脚本，但证书可能未就绪
-
-**修改前**:
-```bash
-sleep 10
-/usr/local/bin/caddy-cert-sync > /dev/null 2>&1 || true
-```
-
-**修改后**:
-```bash
-# 先检查 Caddy 证书目录是否存在证书
-if ls /root/.local/share/caddy/certificates/*/"${domain}.crt" >/dev/null 2>&1; then
-  caddy_cert_found="true"
-  # 证书存在后才尝试同步
-  /usr/local/bin/caddy-cert-sync >/dev/null 2>&1
-fi
-```
-
-**位置**: `modules/web/caddy.sh:128-177`
-
-**改进**:
-- 避免在证书未就绪时尝试同步
-- 添加详细 debug 日志追踪等待过程
-- 更可靠的错误处理
-
-#### 4. 动态证书路径检测
-
-**问题**: 硬编码 Caddy 证书路径，对目录结构变化不健壮
-
-**修改前**:
-```bash
-CADDY_CERT_DIR="/root/.local/share/caddy/certificates/acme-v02.api.letsencrypt.org-directory"
-for cert_dir in "${CADDY_CERT_DIR}"/*/; do
-  # 循环遍历子目录
-done
-```
-
-**修改后**:
-```bash
-CADDY_CERT_BASE="/root/.local/share/caddy/certificates"
-cert_file=$(find "${CADDY_CERT_BASE}" -type f -name "${DOMAIN}.crt" -print -quit 2>/dev/null || true)
-key_file=$(find "${CADDY_CERT_BASE}" -type f -name "${DOMAIN}.key" -print -quit 2>/dev/null || true)
-```
-
-**位置**: `modules/web/caddy.sh:179-227`
-
-**优势**:
-- 适应任意 ACME provider 目录结构
-- Caddy 更新不会导致脚本失效
-- 代码更简洁
-
-#### 5. Caddy 端口配置化
-
-**问题**: 端口 8444 硬编码，无法配置
-
-**修改后**:
-```bash
-local caddy_http_port="${CADDY_HTTP_PORT:-80}"
-local caddy_https_port="${CADDY_HTTPS_PORT:-8444}"
-local caddy_fallback_port="${CADDY_FALLBACK_PORT:-8080}"
-```
-
-**位置**: `modules/web/caddy.sh:93-133`
-
-**配置选项**:
-- `CADDY_HTTP_PORT`: HTTP 端口（默认 80）
-- `CADDY_HTTPS_PORT`: HTTPS 端口（默认 8444，避免与 Xray Vision 8443 冲突）
-- `CADDY_FALLBACK_PORT`: Fallback 服务端口（默认 8080）
-
-#### 6. 域名验证逻辑统一
-
-**问题**: `cert-auto` 插件重复实现域名验证，正则较弱
-
-**修改前** (cert-auto):
-```bash
-[[ "${domain}" =~ ^[a-zA-Z0-9.-]+$ ]] || return 1  # 接受 ..com, -.com
-```
-
-**修改后**:
-```bash
-# 复用 lib/args.sh 的 RFC 兼容验证
-if [[ ! "${domain}" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$ ]]; then
-  return 1
-fi
-```
-
-**位置**: `plugins/available/cert-auto/plugin.sh:11-30`
-
-**原则**: DRY (Don't Repeat Yourself)，确保一致性
-
-### 实施原则总结
-
-本次改进遵循以下原则：
-
-✅ **最小改动**: 只修复真正的问题，不做不必要的重构
-✅ **保持简洁**: 避免过度设计，保持代码可读性
-✅ **向后兼容**: 通过环境变量提供新功能，保持默认行为
-✅ **调试友好**: 关键路径添加 debug 日志
-✅ **符合官方**: 遵循 Xray-core 官方最佳实践
-
-### 不实施项（避免过度优化）
-
-❌ 不实现客户端管理系统（保持工具定位简洁）
-❌ 不修改 spiderX 服务端配置（`"/"` 是合理的示例值，客户端参数）
-❌ 不实现 OCSP Stapling 验证（非关键功能）
-❌ 不重构现有架构（当前设计已足够好）
-
-### spiderX 参数的理解
-
-**重要澄清**: spiderX 是**客户端参数**，不是服务端强制值
+### spiderX 参数
+- spiderX 是**客户端参数**，不是服务端强制值
 - 服务端 `"spiderX": "/"` 是示例路径
 - 客户端链接中 `spx=%2F` 才是实际使用值
-- 官方建议"每客户端不同"指的是生成链接时可以变化
 
-### 代码改动统计
+## 证书管理
 
-- 修改文件: 5 个
-- 新增代码: ~80 行
-- 删除代码: ~30 行
-- 风险评估: 低（主要是参数调整和逻辑优化）
+### 自动化方案选择
+- ✅ **Caddy**: 成熟的自动证书管理，参考 233boy/Xray
+- ❌ **acme.sh**: 缺少完整集成逻辑，维护复杂度高
 
-### 验证建议
+### 证书同步原子性（2025-10-05 改进）
 
-修改后建议验证：
-1. TLS 1.3 连接正常（Vision 端点）
-2. 多 shortId 配置有效（检查生成的配置文件）
-3. 证书同步在首次安装时可靠
-4. Caddy 端口可配置且无冲突
+#### 原子文件操作原则
+```bash
+# ✅ 使用同分区临时目录 + mv（POSIX 保证原子性）
+tmpdir=$(mktemp -d -p "${TARGET_DIR}" .sync.XXXXXX)
+cp source "${tmpdir}/file"
+chmod 644 "${tmpdir}/file"
+mv -f "${tmpdir}/file" "${TARGET_DIR}/file"  # 原子操作
 
-这次审查和改进基于官方文档和最佳实践，确保项目与 Xray-core 生态保持同步。
+# ⚠️ 避免跨分区 mv（非原子，实际是 copy + delete）
+mktemp -d -p /tmp  # /tmp 通常在不同分区或 ramfs
+```
+
+#### 证书验证（支持 RSA 和 ECDSA）
+```bash
+# ✅ 通用方法：比较公钥哈希
+cert_pub=$(openssl x509 -in cert.pem -pubkey -noout | sha256sum | awk '{print $1}')
+key_pub=$(openssl pkey -in key.pem -pubout | sha256sum | awk '{print $1}')
+[[ "${cert_pub}" == "${key_pub}" ]] || exit 1
+
+# ❌ 旧方法：仅支持 RSA
+cert_modulus=$(openssl x509 -noout -modulus -in cert.pem | openssl md5)
+key_modulus=$(openssl rsa -noout -modulus -in key.pem | openssl md5)
+```
+
+#### 同步失败回滚
+```bash
+# 备份现有证书
+backup_dir="${TARGET_DIR}/.backup.$$"
+cp -a existing_cert "${backup_dir}/"
+
+# 原子移动双文件
+mv -f new_fullchain.pem target/
+if ! mv -f new_privkey.pem target/; then
+  # 回滚
+  mv -f "${backup_dir}/fullchain.pem" target/
+  exit 1
+fi
+rm -rf "${backup_dir}"
+```
+
+#### systemd 集成策略
+```ini
+# ✅ 使用 Timer（可靠、可预测）
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min  # 证书变更频率低，10分钟足够
+Persistent=true
+
+# ❌ 避免 Path 单元（inotify 在嵌套目录/NFS 不可靠）
+[Path]
+PathChanged=/path/to/certs  # 有内置延迟，某些文件系统不可靠
+```
+
+#### 证书有效期检查
+```bash
+# 检查是否已过期（拒绝同步）
+openssl x509 -in cert.pem -noout -checkend 0 || exit 1
+
+# 7天警告窗口（24小时太短）
+openssl x509 -in cert.pem -noout -checkend 604800 || log warn "expires soon"
+```
+
+### Xray 重启策略（关键修正）
+
+**重要发现**: Xray-core **不支持** SIGHUP 优雅重载
+- 参考: https://github.com/XTLS/Xray-core/discussions/1060
+- 官方安装脚本从不包含 `ExecReload` 指令
+
+```bash
+# ❌ 错误：Xray 不支持 reload
+systemctl reload xray
+
+# ✅ 正确：证书更新后必须 restart
+systemctl restart xray
+```
+
+```ini
+# xray.service 不应包含 ExecReload
+[Service]
+ExecStart=/usr/local/bin/xray run -confdir /usr/local/etc/xray/active -format json
+# 不要添加 ExecReload（Xray 不支持）
+```
+
+### systemd 服务安全加固
+```ini
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/cert-sync
+
+# 安全限制
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/usr/local/etc/xray/certs
+NoNewPrivileges=true
+
+# 资源限制
+MemoryMax=50M
+TasksMax=10
+```
+
+## 参数系统设计
+
+### 统一参数格式
+```bash
+# install.sh 和 xrf 使用完全相同的参数
+--topology reality-only|vision-reality
+--domain <domain>           # vision-reality 必需
+--version <version>         # default: latest
+--plugins <plugin1,plugin2>
+--debug
+
+# 管道友好（环境变量在管道中无效）
+curl -sL install.sh | bash -s -- --domain example.com
+```
+
+### 参数验证原则
+```bash
+# 输入验证
+args::validate_topology()  # 只允许 reality-only|vision-reality
+args::validate_domain()    # RFC 兼容 + 禁止内部域名
+args::validate_version()   # latest 或 vX.Y.Z
+
+# 交叉验证
+args::validate_config()    # vision-reality 需要域名
+
+# ✅ 正确：验证失败立即退出
+args::validate_topology "${2}" || return 1
+TOPOLOGY="${2}"
+
+# ❌ 错误：验证失败但继续执行
+args::validate_topology "${2}"  # 未检查返回值
+TOPOLOGY="${2}"
+```
+
+### 域名验证（RFC 兼容）
+```bash
+# ✅ 正确的正则（防止 ..com, -.com）
+[[ "${domain}" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$ ]]
+
+# 禁止内部域名
+case "${domain}" in
+  localhost|*.local|127.*|10.*|172.1[6-9].*|172.2[0-9].*|172.3[0-1].*|192.168.*)
+    return 1 ;;
+esac
+```
+
+## 常用命令
+
+### 构建和安装
+```bash
+# 本地安装
+bin/xrf install --topology reality-only
+
+# 带插件的 Vision-Reality 拓扑
+bin/xrf install --topology vision-reality --domain your.domain.com --plugins cert-auto
+
+# 一键安装（管道友好）
+curl -sL install.sh | bash -s -- --topology reality-only
+
+# 卸载
+bin/xrf uninstall
+```
+
+### 调试
+```bash
+# 启用调试日志
+XRF_DEBUG=true bin/xrf install --topology reality-only
+
+# JSON 格式日志
+XRF_JSON=true bin/xrf install --topology reality-only
+
+# 查看服务状态
+systemctl status xray
+journalctl -u xray -f
+
+# 测试证书同步
+/usr/local/bin/caddy-cert-sync example.com
+
+# 验证 systemd timer
+systemctl list-timers cert-reload.timer
+systemctl status cert-reload.timer
+```
+
+### 验证端点
+```bash
+# Vision 端点测试
+timeout 3 bash -c "</dev/tcp/domain.com/8443" && echo "Vision accessible"
+
+# Reality 端点测试
+timeout 3 bash -c "</dev/tcp/1.2.3.4/443" && echo "Reality accessible"
+```
+
+## 架构决策记录
+
+### ADR-001: 统一参数传递系统（2025-09-XX）
+**问题**: install.sh 和 xrf 使用不同参数格式，环境变量在管道中无效
+
+**决策**: 彻底统一为命令行参数，移除环境变量混合模式
+
+**理由**:
+- 管道友好：`curl | bash -s -- --domain x.com` 正常工作
+- 零维护负担：单一参数定义点，无兼容性包袱
+- 接口一致：不同入口使用相同参数
+
+### ADR-002: 证书同步从 Path 单元改为 Timer（2025-10-05）
+**问题**: systemd Path 单元在嵌套目录、NFS 等场景不可靠
+
+**决策**: 使用 Timer 每 10 分钟检查证书变更
+
+**理由**:
+- 更可靠：避免 inotify 文件系统兼容性问题
+- 足够及时：证书通常 60-90 天才更新，10 分钟检查足够
+- 易于测试：可预测的执行时间
+
+### ADR-003: Xray 证书更新使用 restart 而非 reload（2025-10-05）
+**问题**: Xray-core 不支持 SIGHUP 优雅重载
+
+**决策**: 证书更新后使用 `systemctl restart xray`
+
+**理由**:
+- 官方确认：GitHub Discussion #1060 明确不支持
+- 避免未定义行为：SIGHUP 可能导致进程异常终止
+- 官方参考：XTLS/Xray-install 脚本无 ExecReload
+
+### ADR-004: 证书验证支持 ECDSA（2025-10-05）
+**问题**: 原实现仅验证 RSA 证书，现代 CA 越来越多使用 ECDSA
+
+**决策**: 使用公钥哈希比对，支持 RSA 和 ECDSA
+
+**理由**:
+- 通用方法：`openssl pkey` 处理所有密钥类型
+- 面向未来：ECDSA 性能更好、体积更小
+- 算法无关：SHA256 哈希比对不依赖特定算法
+
+## 核心教训总结
+
+1. **验证官方支持，不做假设**
+   - 查阅官方文档和 GitHub discussions
+   - 验证关键功能（如 SIGHUP reload）实际支持情况
+
+2. **选择适合场景的技术**
+   - Timer 比 Path 更可靠（虽然看起来不"高级"）
+   - 成熟方案（Caddy）优于重复造轮子（acme.sh）
+
+3. **完整的错误恢复机制**
+   - 原子操作需要考虑多文件场景
+   - 添加备份和回滚机制
+
+4. **安全默认和最小权限**
+   - systemd 服务启用安全加固（ProtectSystem、NoNewPrivileges）
+   - 文件权限遵循最小权限原则
+
+5. **代码整洁优于兼容性**
+   - 无用户则无负担，不做不必要的向后兼容
+   - 删除不完整或废弃的代码
+
+---
+
+**文档维护**: 定期审查，随项目演进更新。遵循"具体、简洁、可操作"原则。

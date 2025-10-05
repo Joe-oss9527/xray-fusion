@@ -15,6 +15,9 @@ ProtectHome=true
 PrivateTmp=true
 RestrictAddressFamilies=AF_INET AF_INET6
 ExecStart=/usr/local/bin/xray run -confdir /usr/local/etc/xray/active -format json
+# Note: Xray-core does not support graceful reload via SIGHUP
+# See: https://github.com/XTLS/Xray-core/discussions/1060
+# Configuration changes require full restart
 Restart=on-failure
 RestartPreventExitStatus=23
 LimitNPROC=10000

@@ -192,62 +192,218 @@ caddy::wait_for_cert() {
 caddy::setup_cert_sync() {
   local domain="${1}"
 
-  # 创建证书同步脚本（动态查找证书路径）
+  # 创建证书同步脚本（原子复制 + 证书验证）
   cat > /usr/local/bin/caddy-cert-sync << 'EOF'
 #!/bin/bash
-# 同步 Caddy 证书到 Xray 目录
+# 原子同步 Caddy 证书到 Xray 目录
 set -euo pipefail
 
 DOMAIN="${1:-}"
 CADDY_CERT_BASE="/root/.local/share/caddy/certificates"
 XRAY_CERT_DIR="/usr/local/etc/xray/certs"
 
+log() {
+  local level="${1:-info}"
+  shift
+  local msg="${1}"
+  printf '[%s] %-5s [caddy-cert-sync] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${level}" "${msg}" >&2
+}
+
+cleanup_tmpdir() {
+  if [[ -n "${tmpdir:-}" && -d "${tmpdir}" ]]; then
+    rm -rf "${tmpdir}" 2>/dev/null || true
+  fi
+}
+
+trap cleanup_tmpdir EXIT INT TERM HUP
+
 if [[ -z "${DOMAIN}" ]]; then
-  echo "[caddy-cert-sync] ERROR: domain not specified" >&2
+  log error "domain not specified"
   exit 1
 fi
 
-# 动态查找域名证书（支持任意 ACME provider 目录结构）
-cert_file=$(find "${CADDY_CERT_BASE}" -type f -name "${DOMAIN}.crt" -print -quit 2>/dev/null || true)
-key_file=$(find "${CADDY_CERT_BASE}" -type f -name "${DOMAIN}.key" -print -quit 2>/dev/null || true)
+# 动态查找域名证书（支持任意 ACME provider 目录结构，选择最新的）
+cert_file=$(find "${CADDY_CERT_BASE}" -maxdepth 4 -type f -name "${DOMAIN}.crt" \
+  -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
+key_file=$(find "${CADDY_CERT_BASE}" -maxdepth 4 -type f -name "${DOMAIN}.key" \
+  -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
 
-if [[ -f "${cert_file}" && -f "${key_file}" ]]; then
-  mkdir -p "${XRAY_CERT_DIR}"
-  cp "${cert_file}" "${XRAY_CERT_DIR}/fullchain.pem"
-  cp "${key_file}" "${XRAY_CERT_DIR}/privkey.pem"
-  chmod 644 "${XRAY_CERT_DIR}/fullchain.pem"
-  chmod 640 "${XRAY_CERT_DIR}/privkey.pem"
-  chown root:xray "${XRAY_CERT_DIR}"/*.pem 2>/dev/null || true
-  echo "[caddy-cert-sync] certificates updated for ${DOMAIN}"
-  exit 0
+if [[ ! -f "${cert_file}" ]]; then
+  log error "certificate file not found for ${DOMAIN}"
+  log error "searched in: ${CADDY_CERT_BASE}"
+  exit 1
 fi
 
-echo "[caddy-cert-sync] no certificates found for ${DOMAIN}" >&2
-exit 1
+if [[ ! -f "${key_file}" ]]; then
+  log error "private key file not found for ${DOMAIN}"
+  log error "searched in: ${CADDY_CERT_BASE}"
+  exit 1
+fi
+
+log info "found certificate: ${cert_file}"
+log info "found private key: ${key_file}"
+
+# 证书验证：检查是否已过期
+if ! openssl x509 -in "${cert_file}" -noout -checkend 0 >/dev/null 2>&1; then
+  log error "certificate has already expired - aborting sync"
+  exit 1
+fi
+
+# 证书验证：检查有效期（7天警告窗口）
+if ! openssl x509 -in "${cert_file}" -noout -checkend 604800 >/dev/null 2>&1; then
+  log warn "certificate expires within 7 days - renewal may have failed"
+fi
+
+# 证书和私钥匹配性验证（支持 RSA 和 ECDSA）
+validate_cert_key_match() {
+  local cert="${1}"
+  local key="${2}"
+
+  # 通用方法：比较公钥（适用于 RSA 和 ECDSA）
+  local cert_pub key_pub
+  cert_pub=$(openssl x509 -in "${cert}" -pubkey -noout 2>/dev/null | sha256sum | awk '{print $1}')
+  key_pub=$(openssl pkey -in "${key}" -pubout 2>/dev/null | sha256sum | awk '{print $1}')
+
+  if [[ -z "${cert_pub}" || -z "${key_pub}" ]]; then
+    log error "failed to extract public keys for validation"
+    return 1
+  fi
+
+  if [[ "${cert_pub}" != "${key_pub}" ]]; then
+    log error "certificate and private key do not match"
+    log error "cert pubkey hash: ${cert_pub}"
+    log error "key pubkey hash: ${key_pub}"
+    return 1
+  fi
+
+  log info "certificate and private key validated successfully"
+  return 0
+}
+
+if ! validate_cert_key_match "${cert_file}" "${key_file}"; then
+  exit 1
+fi
+
+# 原子复制：使用同分区临时目录 + mv（POSIX 原子操作）
+mkdir -p "${XRAY_CERT_DIR}"
+tmpdir=$(mktemp -d -p "${XRAY_CERT_DIR}" .cert-sync.XXXXXX)
+
+# 备份现有证书（用于失败回滚）
+backup_dir="${XRAY_CERT_DIR}/.backup.$$"
+mkdir -p "${backup_dir}"
+
+if [[ -f "${XRAY_CERT_DIR}/fullchain.pem" ]]; then
+  cp -a "${XRAY_CERT_DIR}/fullchain.pem" "${backup_dir}/fullchain.pem"
+fi
+if [[ -f "${XRAY_CERT_DIR}/privkey.pem" ]]; then
+  cp -a "${XRAY_CERT_DIR}/privkey.pem" "${backup_dir}/privkey.pem"
+fi
+
+# 复制到临时目录
+cp "${cert_file}" "${tmpdir}/fullchain.pem"
+cp "${key_file}" "${tmpdir}/privkey.pem"
+
+# 设置权限（在临时目录中）
+chmod 644 "${tmpdir}/fullchain.pem" || {
+  log error "failed to set permissions on fullchain.pem"
+  rm -rf "${tmpdir}" "${backup_dir}"
+  exit 1
+}
+
+chmod 640 "${tmpdir}/privkey.pem" || {
+  log error "failed to set permissions on privkey.pem"
+  rm -rf "${tmpdir}" "${backup_dir}"
+  exit 1
+}
+
+# 设置所有权（验证 xray 组存在）
+if getent group xray >/dev/null 2>&1; then
+  chown root:xray "${tmpdir}"/*.pem || {
+    log error "failed to set ownership (root:xray)"
+    rm -rf "${tmpdir}" "${backup_dir}"
+    exit 1
+  }
+else
+  log warn "xray group does not exist - files will be owned by root:root"
+  chown root:root "${tmpdir}"/*.pem
+fi
+
+# 原子移动（带回滚能力）
+if ! mv -f "${tmpdir}/fullchain.pem" "${XRAY_CERT_DIR}/fullchain.pem"; then
+  log error "failed to move fullchain.pem"
+  rm -rf "${tmpdir}" "${backup_dir}"
+  exit 1
+fi
+
+if ! mv -f "${tmpdir}/privkey.pem" "${XRAY_CERT_DIR}/privkey.pem"; then
+  log error "failed to move privkey.pem - rolling back fullchain"
+  # 回滚：恢复旧的 fullchain
+  if [[ -f "${backup_dir}/fullchain.pem" ]]; then
+    mv -f "${backup_dir}/fullchain.pem" "${XRAY_CERT_DIR}/fullchain.pem"
+  fi
+  rm -rf "${tmpdir}" "${backup_dir}"
+  exit 1
+fi
+
+# 成功 - 清理备份和临时目录
+rm -rf "${backup_dir}"
+rmdir "${tmpdir}"
+trap - EXIT
+
+log info "certificates atomically updated for ${DOMAIN}"
+
+# 重启 Xray 服务（Xray 不支持 SIGHUP 优雅重载）
+# 参考: https://github.com/XTLS/Xray-core/discussions/1060
+if systemctl is-active --quiet xray 2>/dev/null; then
+  log info "restarting xray service to apply new certificates"
+  if systemctl restart xray >/dev/null 2>&1; then
+    log info "xray service restarted successfully"
+  else
+    log error "failed to restart xray service"
+    exit 1
+  fi
+fi
+
+exit 0
 EOF
 
   chmod +x /usr/local/bin/caddy-cert-sync
 
-  # 创建 systemd service 传递域名参数
-  cat > /etc/systemd/system/caddy-cert-sync.service << EOF
+  # 创建 systemd service 用于证书同步
+  cat > /etc/systemd/system/cert-reload.service << EOF
 [Unit]
-Description=Sync Caddy certificates to Xray
+Description=Sync Caddy certificates to Xray for ${domain}
 After=caddy.service
+PartOf=caddy.service
 
 [Service]
 Type=oneshot
 ExecStart=/usr/local/bin/caddy-cert-sync ${domain}
+
+# 安全加固
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/usr/local/etc/xray/certs
+NoNewPrivileges=true
+
+# 资源限制
+MemoryMax=50M
+TasksMax=10
 EOF
 
-  # 创建 systemd timer 定期同步
-
-  cat > /etc/systemd/system/caddy-cert-sync.timer << EOF
+  # 创建 systemd timer 定期检查证书（比 path 单元更可靠）
+  # 参考: systemd Path 单元在某些文件系统和嵌套目录场景下不可靠
+  cat > /etc/systemd/system/cert-reload.timer << EOF
 [Unit]
-Description=Sync Caddy certificates hourly
-Requires=caddy-cert-sync.service
+Description=Periodic certificate sync check for ${domain}
+PartOf=caddy.service
 
 [Timer]
-OnCalendar=hourly
+# 启动后 2 分钟首次运行
+OnBootSec=2min
+# 每 10 分钟检查一次（证书变更频率低，10分钟足够）
+OnUnitActiveSec=10min
 Persistent=true
 
 [Install]
@@ -255,8 +411,8 @@ WantedBy=timers.target
 EOF
 
   systemctl daemon-reload
-  systemctl enable caddy-cert-sync.timer
-  systemctl start caddy-cert-sync.timer
+  systemctl enable cert-reload.timer
+  systemctl start cert-reload.timer
 
-  core::log info "certificate sync configured" "$(printf '{"domain":"%s"}' "${domain}")"
+  core::log info "certificate sync configured (timer-based)" "$(printf '{"domain":"%s","interval":"10min"}' "${domain}")"
 }
