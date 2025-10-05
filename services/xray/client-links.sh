@@ -29,6 +29,7 @@ main() {
   [[ -n "${ip}" ]] || ip="$(net::detect_public_ip || true)"
   [[ -n "${ip}" ]] || ip="YOUR_SERVER_IP"
   echo "========== LINKS =========="
+  local links=()
   case "${topo}" in
     vision-reality)
       local vport rport uv ur dom
@@ -37,21 +38,34 @@ main() {
       uv="$(echo "${st}" | jq -r '.xray.uuid_vision // empty')"
       ur="$(echo "${st}" | jq -r '.xray.uuid_reality // empty')"
       dom="$(echo "${st}" | jq -r '.xray.domain // empty')"
-      [[ -n "${dom}" && -n "${uv}" ]] && echo "VISION : vless://${uv}@${dom}:${vport}?security=tls&flow=xtls-rprx-vision&sni=${dom}&fp=chrome#Vision-${dom}"
-      [[ -n "${ur}" && -n "${pbk}" && -n "${sid}" ]] && echo "REALITY: vless://${ur}@${ip}:${rport}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${sni%%,*}&fp=chrome&pbk=${pbk}&sid=${sid}&spx=%2F#REALITY-${ip}"
+      if [[ -n "${dom}" && -n "${uv}" ]]; then
+        local vlink="vless://${uv}@${dom}:${vport}?security=tls&flow=xtls-rprx-vision&sni=${dom}&fp=chrome#Vision-${dom}"
+        echo "VISION : ${vlink}"
+        links+=("${vlink}")
+      fi
+      if [[ -n "${ur}" && -n "${pbk}" && -n "${sid}" ]]; then
+        local rlink="vless://${ur}@${ip}:${rport}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${sni%%,*}&fp=chrome&pbk=${pbk}&sid=${sid}&spx=%2F#REALITY-${ip}"
+        echo "REALITY: ${rlink}"
+        links+=("${rlink}")
+      fi
       ;;
     *)
       local uuid port
       uuid="$(echo "${st}" | jq -r '.xray.uuid // empty')"
       port="$(echo "${st}" | jq -r '.xray.port // "443"')"
       if [[ -n "${uuid}" && -n "${pbk}" && -n "${sid}" ]]; then
-        echo "REALITY: vless://${uuid}@${ip}:${port}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${sni%%,*}&fp=chrome&pbk=${pbk}&sid=${sid}&spx=%2F#REALITY-${ip}"
+        local link="vless://${uuid}@${ip}:${port}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${sni%%,*}&fp=chrome&pbk=${pbk}&sid=${sid}&spx=%2F#REALITY-${ip}"
+        echo "REALITY: ${link}"
+        links+=("${link}")
       else
         echo "REALITY: vless://<UUID>@${ip}:${port}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${sni%%,*}&fp=chrome&pbk=<PUBLIC_KEY>&sid=<SHORT_ID>&spx=%2F#REALITY-${ip}"
       fi
       ;;
   esac
-  plugins::emit links_render "topology=${topo}"
+  # Emit plugin hook for each link
+  for link in "${links[@]}"; do
+    plugins::emit links_render "link=${link}" "topology=${topo}"
+  done
   echo "=========================="
 }
 main "${@}"
