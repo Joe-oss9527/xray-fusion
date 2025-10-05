@@ -201,12 +201,26 @@ set -euo pipefail
 DOMAIN="${1:-}"
 CADDY_CERT_BASE="/root/.local/share/caddy/certificates"
 XRAY_CERT_DIR="/usr/local/etc/xray/certs"
+XRF_DEBUG="${XRF_DEBUG:-false}"
+XRF_JSON="${XRF_JSON:-false}"
 
+# Embedded logging (compatible with core::log from lib/core.sh)
 log() {
-  local level="${1:-info}"
+  local lvl="${1}"
   shift
   local msg="${1}"
-  printf '[%s] %-5s [caddy-cert-sync] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${level}" "${msg}" >&2
+
+  # Filter debug messages unless XRF_DEBUG is true
+  [[ "${lvl}" == "debug" && "${XRF_DEBUG}" != "true" ]] && return 0
+
+  # All logs to stderr
+  if [[ "${XRF_JSON}" == "true" ]]; then
+    printf '{"ts":"%s","level":"%s","msg":"[caddy-cert-sync] %s"}\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${lvl}" "${msg}" >&2
+  else
+    printf '[%s] %-5s [caddy-cert-sync] %s\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${lvl}" "${msg}" >&2
+  fi
 }
 
 cleanup_tmpdir() {
@@ -379,6 +393,10 @@ PartOf=caddy.service
 [Service]
 Type=oneshot
 ExecStart=/usr/local/bin/caddy-cert-sync ${domain}
+
+# 环境变量（与项目日志系统兼容）
+Environment="XRF_DEBUG=\${XRF_DEBUG:-false}"
+Environment="XRF_JSON=\${XRF_JSON:-false}"
 
 # 安全加固
 PrivateTmp=true

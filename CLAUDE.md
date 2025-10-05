@@ -36,6 +36,21 @@ core::log() {
   fi
 }
 
+# 独立脚本中嵌入兼容的日志函数
+# 用于 /usr/local/bin/caddy-cert-sync 等独立脚本
+log() {
+  local lvl="${1}"; shift
+  local msg="${1}"
+  [[ "${lvl}" == "debug" && "${XRF_DEBUG}" != "true" ]] && return 0
+  if [[ "${XRF_JSON}" == "true" ]]; then
+    printf '{"ts":"%s","level":"%s","msg":"[script-name] %s"}\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${lvl}" "${msg}" >&2
+  else
+    printf '[%s] %-5s [script-name] %s\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${lvl}" "${msg}" >&2
+  fi
+}
+
 # 外部命令输出也必须重定向
 external-command >/dev/null 2>&1 || true
 ```
