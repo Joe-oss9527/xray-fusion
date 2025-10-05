@@ -78,8 +78,24 @@ main() {
   if [[ "${XRAY_REALITY_DEST}" != *:* ]]; then
     XRAY_REALITY_DEST="${XRAY_REALITY_DEST}:443"
   fi
-  # Ensure shortId is generated before configure
+  # Generate shortIds pool (3-5 shortIds for multi-client scenarios)
+  # Primary shortId (backward compatible)
   [[ -n "${XRAY_SHORT_ID:-}" ]] || XRAY_SHORT_ID="$(openssl rand -hex 8 2> /dev/null || head -c 8 /dev/urandom | hexdump -e '16/1 \"%02x\"')"
+
+  # Additional shortIds for future client differentiation (optional)
+  [[ -n "${XRAY_SHORT_ID_2:-}" ]] || XRAY_SHORT_ID_2="$(openssl rand -hex 8 2> /dev/null || head -c 8 /dev/urandom | hexdump -e '16/1 \"%02x\"')"
+  [[ -n "${XRAY_SHORT_ID_3:-}" ]] || XRAY_SHORT_ID_3="$(openssl rand -hex 8 2> /dev/null || head -c 8 /dev/urandom | hexdump -e '16/1 \"%02x\"')"
+
+  # Validate all generated shortIds (hex format, even length, max 16 chars)
+  # Source the validate_shortid function from configure.sh context
+  validate_shortid() { [[ "${#1}" -le 16 && $((${#1} % 2)) -eq 0 && "${1}" =~ ^[0-9a-fA-F]+$ ]]; }
+
+  for sid_var in XRAY_SHORT_ID XRAY_SHORT_ID_2 XRAY_SHORT_ID_3; do
+    if [[ -n "${!sid_var:-}" ]] && ! validate_shortid "${!sid_var}"; then
+      core::log error "invalid shortId format" "$(printf '{"var":"%s","value":"%s","requirements":"hex,even_length,max_16"}' "${sid_var}" "${!sid_var}")"
+      exit 1
+    fi
+  done
 
   # Generate private/public key pair if not provided
   if [[ -z "${XRAY_PRIVATE_KEY:-}" && -x "$(xray::bin)" ]]; then
@@ -91,7 +107,7 @@ main() {
   fi
 
   export XRAY_SNIFFING="${XRAY_SNIFFING:-false}"
-  export XRAY_UUID XRAY_UUID_VISION XRAY_UUID_REALITY XRAY_SHORT_ID XRAY_SNI XRAY_REALITY_DEST \
+  export XRAY_UUID XRAY_UUID_VISION XRAY_UUID_REALITY XRAY_SHORT_ID XRAY_SHORT_ID_2 XRAY_SHORT_ID_3 XRAY_SNI XRAY_REALITY_DEST \
     XRAY_PORT XRAY_VISION_PORT XRAY_REALITY_PORT XRAY_DOMAIN XRAY_CERT_DIR XRAY_FALLBACK_PORT \
     XRAY_PRIVATE_KEY XRAY_PUBLIC_KEY
 

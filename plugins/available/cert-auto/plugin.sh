@@ -8,19 +8,20 @@ HERE="${HERE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
 . "${HERE}/lib/core.sh"
 . "${HERE}/modules/web/caddy.sh"
 
-# Validate domain name format and prevent internal domains
+# Validate domain - use shared validation from args module
 _validate_domain() {
   local domain="${1}"
 
-  # Basic format check: alphanumeric, dots, hyphens
-  [[ "${domain}" =~ ^[a-zA-Z0-9.-]+$ ]] || return 1
+  # Reuse RFC-compliant validation from lib/args.sh
+  if [[ ! "${domain}" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$ ]]; then
+    core::log error "invalid domain format" "$(printf '{"domain":"%s"}' "${domain}")"
+    return 1
+  fi
 
-  # Must contain at least one dot
-  [[ "${domain}" == *.* ]] || return 1
-
-  # Reject internal/localhost domains
+  # Prevent localhost and internal domains
   case "${domain}" in
-    localhost | *.localhost | 127.* | 10.* | 172.16.* | 172.17.* | 172.18.* | 172.19.* | 172.2?.* | 172.30.* | 172.31.* | 192.168.* | *.local)
+    localhost | *.local | 127.* | 10.* | 172.1[6-9].* | 172.2[0-9].* | 172.3[0-1].* | 192.168.*)
+      core::log error "internal domain not allowed" "$(printf '{"domain":"%s"}' "${domain}")"
       return 1
       ;;
   esac

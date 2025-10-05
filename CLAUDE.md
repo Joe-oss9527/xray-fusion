@@ -497,3 +497,194 @@ vless://uuid@104.194.91.33:443?encryption=none&flow=xtls-rprx-vision&security=re
 - ✅ 确保外部命令输出不污染函数返回值
 
 这些经验将指导后续的开发工作，确保高质量的代码和可靠的系统架构。
+
+---
+
+## 基于 Xray-core v25.9.11 的代码审查与改进 (2025-10-05)
+
+### 审查背景
+
+基于最新 Xray-core v25.9.11 和官方文档进行全面代码审查，识别安全性、可靠性和可维护性问题。
+
+### 核心发现与修正
+
+#### 1. TLS 版本配置最佳实践
+
+**官方推荐**: REALITY 协议推荐目标网站支持 TLSv1.3 + H2
+
+**修改前**:
+```json
+"minVersion": "1.2"  // Vision 配置允许 TLS 1.2
+```
+
+**修改后**:
+```json
+"minVersion": "1.3"  // 符合官方最佳实践
+```
+
+**位置**: `services/xray/configure.sh:105`
+
+**理由**:
+- 提高安全性，TLS 1.3 更安全
+- 与 REALITY 推荐的目标特征一致
+- 现代浏览器和服务器都支持 TLS 1.3
+
+#### 2. shortIds 配置的正确理解
+
+**重要概念澄清**:
+- shortIds 是服务端配置的一个**池**，客户端从中选择
+- 不是"每个客户端必须有唯一 shortId"，而是"提供区分能力"
+- 对于个人使用，单个 shortId 已足够；多用户场景可扩展池
+
+**修改前**:
+```json
+"shortIds": ["", "${XRAY_SHORT_ID}"]  // 仅 2 个选项
+```
+
+**修改后**:
+```bash
+# 生成 3 个 shortId 作为池
+sid_pool='["","${XRAY_SHORT_ID}","${XRAY_SHORT_ID_2}","${XRAY_SHORT_ID_3}"]'
+```
+
+**位置**:
+- `commands/install.sh:81-87` (生成)
+- `services/xray/configure.sh:66-72, 103-109` (配置)
+
+**设计原则**:
+- 保持向后兼容（主 shortId 仍为 `XRAY_SHORT_ID`）
+- 为多客户端场景预留能力
+- 不增加复杂度，不强制使用
+
+#### 3. 证书同步竞态条件修复
+
+**问题**: `caddy::wait_for_cert()` 直接调用同步脚本，但证书可能未就绪
+
+**修改前**:
+```bash
+sleep 10
+/usr/local/bin/caddy-cert-sync > /dev/null 2>&1 || true
+```
+
+**修改后**:
+```bash
+# 先检查 Caddy 证书目录是否存在证书
+if ls /root/.local/share/caddy/certificates/*/"${domain}.crt" >/dev/null 2>&1; then
+  caddy_cert_found="true"
+  # 证书存在后才尝试同步
+  /usr/local/bin/caddy-cert-sync >/dev/null 2>&1
+fi
+```
+
+**位置**: `modules/web/caddy.sh:128-177`
+
+**改进**:
+- 避免在证书未就绪时尝试同步
+- 添加详细 debug 日志追踪等待过程
+- 更可靠的错误处理
+
+#### 4. 动态证书路径检测
+
+**问题**: 硬编码 Caddy 证书路径，对目录结构变化不健壮
+
+**修改前**:
+```bash
+CADDY_CERT_DIR="/root/.local/share/caddy/certificates/acme-v02.api.letsencrypt.org-directory"
+for cert_dir in "${CADDY_CERT_DIR}"/*/; do
+  # 循环遍历子目录
+done
+```
+
+**修改后**:
+```bash
+CADDY_CERT_BASE="/root/.local/share/caddy/certificates"
+cert_file=$(find "${CADDY_CERT_BASE}" -type f -name "${DOMAIN}.crt" -print -quit 2>/dev/null || true)
+key_file=$(find "${CADDY_CERT_BASE}" -type f -name "${DOMAIN}.key" -print -quit 2>/dev/null || true)
+```
+
+**位置**: `modules/web/caddy.sh:179-227`
+
+**优势**:
+- 适应任意 ACME provider 目录结构
+- Caddy 更新不会导致脚本失效
+- 代码更简洁
+
+#### 5. Caddy 端口配置化
+
+**问题**: 端口 8444 硬编码，无法配置
+
+**修改后**:
+```bash
+local caddy_http_port="${CADDY_HTTP_PORT:-80}"
+local caddy_https_port="${CADDY_HTTPS_PORT:-8444}"
+local caddy_fallback_port="${CADDY_FALLBACK_PORT:-8080}"
+```
+
+**位置**: `modules/web/caddy.sh:93-133`
+
+**配置选项**:
+- `CADDY_HTTP_PORT`: HTTP 端口（默认 80）
+- `CADDY_HTTPS_PORT`: HTTPS 端口（默认 8444，避免与 Xray Vision 8443 冲突）
+- `CADDY_FALLBACK_PORT`: Fallback 服务端口（默认 8080）
+
+#### 6. 域名验证逻辑统一
+
+**问题**: `cert-auto` 插件重复实现域名验证，正则较弱
+
+**修改前** (cert-auto):
+```bash
+[[ "${domain}" =~ ^[a-zA-Z0-9.-]+$ ]] || return 1  # 接受 ..com, -.com
+```
+
+**修改后**:
+```bash
+# 复用 lib/args.sh 的 RFC 兼容验证
+if [[ ! "${domain}" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$ ]]; then
+  return 1
+fi
+```
+
+**位置**: `plugins/available/cert-auto/plugin.sh:11-30`
+
+**原则**: DRY (Don't Repeat Yourself)，确保一致性
+
+### 实施原则总结
+
+本次改进遵循以下原则：
+
+✅ **最小改动**: 只修复真正的问题，不做不必要的重构
+✅ **保持简洁**: 避免过度设计，保持代码可读性
+✅ **向后兼容**: 通过环境变量提供新功能，保持默认行为
+✅ **调试友好**: 关键路径添加 debug 日志
+✅ **符合官方**: 遵循 Xray-core 官方最佳实践
+
+### 不实施项（避免过度优化）
+
+❌ 不实现客户端管理系统（保持工具定位简洁）
+❌ 不修改 spiderX 服务端配置（`"/"` 是合理的示例值，客户端参数）
+❌ 不实现 OCSP Stapling 验证（非关键功能）
+❌ 不重构现有架构（当前设计已足够好）
+
+### spiderX 参数的理解
+
+**重要澄清**: spiderX 是**客户端参数**，不是服务端强制值
+- 服务端 `"spiderX": "/"` 是示例路径
+- 客户端链接中 `spx=%2F` 才是实际使用值
+- 官方建议"每客户端不同"指的是生成链接时可以变化
+
+### 代码改动统计
+
+- 修改文件: 5 个
+- 新增代码: ~80 行
+- 删除代码: ~30 行
+- 风险评估: 低（主要是参数调整和逻辑优化）
+
+### 验证建议
+
+修改后建议验证：
+1. TLS 1.3 连接正常（Vision 端点）
+2. 多 shortId 配置有效（检查生成的配置文件）
+3. 证书同步在首次安装时可靠
+4. Caddy 端口可配置且无冲突
+
+这次审查和改进基于官方文档和最佳实践，确保项目与 Xray-core 生态保持同步。

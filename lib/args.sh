@@ -15,22 +15,22 @@ args::init() {
 args::parse() {
   while [[ $# -gt 0 ]]; do
     case "${1}" in
-      --topology|-t)
+      --topology | -t)
         args::validate_topology "${2:-}" || return 1
         TOPOLOGY="${2}"
         shift 2
         ;;
-      --domain|-d)
+      --domain | -d)
         args::validate_domain "${2:-}" || return 1
         DOMAIN="${2}"
         shift 2
         ;;
-      --version|-v)
+      --version | -v)
         args::validate_version "${2:-}" || return 1
         VERSION="${2}"
         shift 2
         ;;
-      --plugins|-p)
+      --plugins | -p)
         PLUGINS="${2:-}"
         shift 2
         ;;
@@ -38,8 +38,8 @@ args::parse() {
         DEBUG="true"
         shift
         ;;
-      --help|-h)
-        return 10  # Special return code for help
+      --help | -h)
+        return 10 # Special return code for help
         ;;
       --)
         shift
@@ -70,7 +70,7 @@ args::validate_topology() {
   fi
 
   case "${topology}" in
-    reality-only|vision-reality)
+    reality-only | vision-reality)
       return 0
       ;;
     *)
@@ -84,7 +84,7 @@ args::validate_topology() {
 args::validate_domain() {
   local domain="${1:-}"
   if [[ -z "${domain}" ]]; then
-    return 0  # Domain is optional for reality-only
+    return 0 # Domain is optional for reality-only
   fi
 
   # Basic domain validation (RFC compliant)
@@ -95,7 +95,7 @@ args::validate_domain() {
 
   # Prevent localhost and internal domains
   case "${domain}" in
-    localhost|*.local|127.*|10.*|172.1[6-9].*|172.2[0-9].*|172.3[0-1].*|192.168.*)
+    localhost | *.local | 127.* | 10.* | 172.1[6-9].* | 172.2[0-9].* | 172.3[0-1].* | 192.168.*)
       core::log error "internal domain not allowed" "$(printf '{"domain":"%s"}' "${domain}")"
       return 1
       ;;

@@ -271,7 +271,7 @@ check_system() {
   if [[ -f /etc/os-release ]]; then
     # Load in subshell to avoid variable pollution
     local os_info
-    os_info=$(source /etc/os-release 2>/dev/null && echo "${ID:-unknown} ${VERSION_ID:-unknown}")
+    os_info=$(source /etc/os-release 2> /dev/null && echo "${ID:-unknown} ${VERSION_ID:-unknown}")
     log_debug "检测到系统: ${os_info}"
   else
     log_warn "无法检测操作系统版本，继续安装..."

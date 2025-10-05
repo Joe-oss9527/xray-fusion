@@ -108,6 +108,34 @@ bin/xrf plugin enable cert-auto
 bin/xrf plugin disable cert-auto
 ```
 
+## 高级配置
+
+### 环境变量
+
+可通过环境变量自定义配置：
+
+```bash
+# Caddy 端口配置（cert-auto 插件）
+CADDY_HTTP_PORT=80          # HTTP 端口（默认 80）
+CADDY_HTTPS_PORT=8444       # HTTPS 端口（默认 8444，避免与 Vision 8443 冲突）
+CADDY_FALLBACK_PORT=8080    # Fallback 服务端口（默认 8080）
+
+# Xray 配置
+XRAY_VISION_PORT=8443       # Vision 端口（vision-reality 模式）
+XRAY_REALITY_PORT=443       # Reality 端口
+XRAY_SNI=www.microsoft.com  # Reality 伪装域名
+```
+
+### 配置说明
+
+**端口分配** (vision-reality 模式):
+- **443**: Reality 入口（推荐，符合官方最佳实践）
+- **8443**: Vision 入口（真实 TLS）
+- **8444**: Caddy HTTPS（自动证书管理，避免冲突）
+- **8080**: Caddy Fallback（处理非代理流量）
+
+**TLS 版本**: Vision 使用 TLS 1.3（符合 Xray-core 官方推荐）
+
 ## 系统要求
 
 - Ubuntu/Debian/CentOS/RHEL

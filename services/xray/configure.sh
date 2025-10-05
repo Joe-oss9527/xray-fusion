@@ -63,12 +63,18 @@ render_release() {
         core::log error "XRAY_PRIVATE_KEY required"
         exit 2
       }
-      local sn
+      local sn sid_pool
       sn="$(json_array_from_csv "${XRAY_SNI}")"
+      # Build shortIds pool: empty string + generated shortIds
+      sid_pool="[\"\",\"${XRAY_SHORT_ID}\""
+      [[ -n "${XRAY_SHORT_ID_2:-}" ]] && sid_pool="${sid_pool},\"${XRAY_SHORT_ID_2}\""
+      [[ -n "${XRAY_SHORT_ID_3:-}" ]] && sid_pool="${sid_pool},\"${XRAY_SHORT_ID_3}\""
+      sid_pool="${sid_pool}]"
+
       cat > "${d}/05_inbounds.json" << JSON
 {"inbounds":[{"tag":"reality","listen":"0.0.0.0","port":${XRAY_PORT},"protocol":"vless",
 "settings":{"clients":[{"id":"${XRAY_UUID}","flow":"xtls-rprx-vision"}],"decryption":"none"},
-"streamSettings":{"network":"tcp","security":"reality","realitySettings":{"show":false,"dest":"${XRAY_REALITY_DEST}","xver":0,"serverNames":${sn},"privateKey":"${XRAY_PRIVATE_KEY}","shortIds":["","${XRAY_SHORT_ID}"],"spiderX":"/"}},
+"streamSettings":{"network":"tcp","security":"reality","realitySettings":{"show":false,"dest":"${XRAY_REALITY_DEST}","xver":0,"serverNames":${sn},"privateKey":"${XRAY_PRIVATE_KEY}","shortIds":${sid_pool},"spiderX":"/"}},
 "sniffing":{"enabled":${sniff_bool},"destOverride":["http","tls","quic"]}}]}
 JSON
       ;;
@@ -94,19 +100,25 @@ JSON
         exit 2
       }
 
-      local sn2
+      local sn2 sid_pool2
       sn2="$(json_array_from_csv "${XRAY_SNI}")"
+      # Build shortIds pool for reality inbound
+      sid_pool2="[\"\",\"${XRAY_SHORT_ID}\""
+      [[ -n "${XRAY_SHORT_ID_2:-}" ]] && sid_pool2="${sid_pool2},\"${XRAY_SHORT_ID_2}\""
+      [[ -n "${XRAY_SHORT_ID_3:-}" ]] && sid_pool2="${sid_pool2},\"${XRAY_SHORT_ID_3}\""
+      sid_pool2="${sid_pool2}]"
+
       core::log debug "generating vision-reality config" "$(printf '{"release_dir":"%s","server_names":"%s"}' "${d}" "${sn2}")"
 
       cat > "${d}/05_inbounds.json" << JSON
 {"inbounds":[
 {"tag":"vision","listen":"0.0.0.0","port":${XRAY_VISION_PORT},"protocol":"vless",
  "settings":{"clients":[{"id":"${XRAY_UUID_VISION}","flow":"xtls-rprx-vision"}],"decryption":"none","fallbacks":[{"alpn":"h2","dest":${XRAY_FALLBACK_PORT}},{"dest":${XRAY_FALLBACK_PORT}}]},
- "streamSettings":{"network":"tcp","security":"tls","tlsSettings":{"rejectUnknownSni":true,"minVersion":"1.2","alpn":["h2","http/1.1"],"certificates":[{"certificateFile":"${XRAY_CERT_DIR}/fullchain.pem","keyFile":"${XRAY_CERT_DIR}/privkey.pem","ocspStapling":3600}]}}, 
+ "streamSettings":{"network":"tcp","security":"tls","tlsSettings":{"rejectUnknownSni":true,"alpn":["h2","http/1.1"],"certificates":[{"certificateFile":"${XRAY_CERT_DIR}/fullchain.pem","keyFile":"${XRAY_CERT_DIR}/privkey.pem","ocspStapling":3600}]}},
  "sniffing":{"enabled":${sniff_bool},"destOverride":["http","tls"]}},
 {"tag":"reality","listen":"0.0.0.0","port":${XRAY_REALITY_PORT},"protocol":"vless",
  "settings":{"clients":[{"id":"${XRAY_UUID_REALITY}","flow":"xtls-rprx-vision"}],"decryption":"none"},
- "streamSettings":{"network":"tcp","security":"reality","realitySettings":{"show":false,"dest":"${XRAY_REALITY_DEST}","xver":0,"serverNames":${sn2},"privateKey":"${XRAY_PRIVATE_KEY}","shortIds":["","${XRAY_SHORT_ID}"],"spiderX":"/"}},
+ "streamSettings":{"network":"tcp","security":"reality","realitySettings":{"show":false,"dest":"${XRAY_REALITY_DEST}","xver":0,"serverNames":${sn2},"privateKey":"${XRAY_PRIVATE_KEY}","shortIds":${sid_pool2},"spiderX":"/"}},
  "sniffing":{"enabled":${sniff_bool},"destOverride":["http","tls","quic"]}}]}
 JSON
 
