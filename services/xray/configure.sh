@@ -114,7 +114,7 @@ JSON
 {"inbounds":[
 {"tag":"vision","listen":"0.0.0.0","port":${XRAY_VISION_PORT},"protocol":"vless",
  "settings":{"clients":[{"id":"${XRAY_UUID_VISION}","flow":"xtls-rprx-vision"}],"decryption":"none","fallbacks":[{"alpn":"h2","dest":${XRAY_FALLBACK_PORT}},{"dest":${XRAY_FALLBACK_PORT}}]},
- "streamSettings":{"network":"tcp","security":"tls","tlsSettings":{"rejectUnknownSni":true,"alpn":["h2","http/1.1"],"certificates":[{"certificateFile":"${XRAY_CERT_DIR}/fullchain.pem","keyFile":"${XRAY_CERT_DIR}/privkey.pem","ocspStapling":3600}]}},
+ "streamSettings":{"network":"tcp","security":"tls","tlsSettings":{"minVersion":"1.3","rejectUnknownSni":true,"alpn":["h2","http/1.1"],"certificates":[{"certificateFile":"${XRAY_CERT_DIR}/fullchain.pem","keyFile":"${XRAY_CERT_DIR}/privkey.pem"}]}},
  "sniffing":{"enabled":${sniff_bool},"destOverride":["http","tls"]}},
 {"tag":"reality","listen":"0.0.0.0","port":${XRAY_REALITY_PORT},"protocol":"vless",
  "settings":{"clients":[{"id":"${XRAY_UUID_REALITY}","flow":"xtls-rprx-vision"}],"decryption":"none"},
@@ -171,37 +171,16 @@ deploy_release() {
     return 1
   fi
 
-  if [[ -x "$(xray::bin)" && "${XRF_SKIP_XRAY_TEST:-false}" != "true" ]]; then
-    local xray_bin
+  if [[ -x "$(xray::bin)" ]]; then
+    local xray_bin test_output
     xray_bin="$(xray::bin)"
-    core::log debug "testing xray config" "$(printf '{"confdir":"%s","xray_bin":"%s"}' "${d}" "${xray_bin}")"
-
-    # 验证配置文件存在且可读
-    for f in "${d}"/*.json; do
-      if [[ -f "${f}" ]]; then
-        core::log debug "config file found" "$(printf '{"file":"%s","size":"%d"}' "${f}" "$(wc -c < "${f}")")"
-      else
-        core::log error "config file missing" "$(printf '{"file":"%s"}' "${f}")"
-      fi
-    done
-
-    local test_output
-    # Security: Use absolute path and validate it exists
-    if [[ ! -x "${xray_bin}" ]]; then
-      core::log error "xray binary not executable" "$(printf '{"path":"%s"}' "${xray_bin}")"
-      return 1
-    fi
 
     if ! test_output="$("${xray_bin}" -test -confdir "${d}" -format json 2>&1)"; then
-      local esc
-      esc="${d//\"/\\\"}"
-      core::log error "xray config test failed" "$(printf '{"confdir":"%s","test_output":"%s"}' "${esc}" "${test_output}")"
+      core::log error "xray config test failed" "$(printf '{"confdir":"%s","test_output":"%s"}' "${d//\"/\\\"}" "${test_output}")"
       printf '%s\n' "${test_output}" >&2
       return 1
     fi
     core::log debug "xray config test passed" "$(printf '{"confdir":"%s"}' "${d}")"
-  else
-    core::log debug "skipping xray config test" "$(printf '{"xray_bin_exists":"%s","skip_test":"%s"}' "$([[ -x "$(xray::bin)" ]] && echo true || echo false)" "${XRF_SKIP_XRAY_TEST:-false}")"
   fi
   local newdg
   newdg="$(digest_confdir "${d}")"

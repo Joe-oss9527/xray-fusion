@@ -109,8 +109,9 @@ chown root:xray *.pem
 ### TLS 配置
 ```json
 {
-  "minVersion": "1.3",  // 符合 Xray-core v25.9.11 推荐
+  "minVersion": "1.3",  // 2025 安全标准，强制 TLS 1.3（符合 Xray-core v25.9.11 推荐）
   "serverName": "example.com"
+  // 注意：不再使用 ocspStapling（Let's Encrypt 2025-01-30 停止 OCSP 服务）
 }
 ```
 
@@ -198,6 +199,23 @@ openssl x509 -in cert.pem -noout -checkend 0 || exit 1
 # 7天警告窗口（24小时太短）
 openssl x509 -in cert.pem -noout -checkend 604800 || log warn "expires soon"
 ```
+
+#### 并发保护（2025-10-06）
+```bash
+# ✅ 证书同步脚本必须添加全局锁（防止 systemd timer 并发触发）
+exec 200>/var/lock/caddy-cert-sync.lock
+if ! flock -n 200; then
+  log info "another sync process is running, skipping"
+  exit 0
+fi
+
+# 原有同步逻辑...
+```
+
+**理由**:
+- systemd timer 可能并发触发，导致竞态条件
+- 使用 `-n` 非阻塞模式，避免任务堆积
+- 符合项目已有 `core::with_flock` 模式
 
 ### Xray 重启策略（关键修正）
 
@@ -372,6 +390,36 @@ timeout 3 bash -c "</dev/tcp/1.2.3.4/443" && echo "Reality accessible"
 - 面向未来：ECDSA 性能更好、体积更小
 - 算法无关：SHA256 哈希比对不依赖特定算法
 
+### ADR-005: 移除 OCSP Stapling（2025-10-06）
+**问题**: Let's Encrypt 于 2025-01-30 停止 OCSP 服务
+
+**决策**: 从 TLS 配置中删除 `ocspStapling` 参数
+
+**理由**:
+- Let's Encrypt 官方公告停止 OCSP Must-Staple 支持
+- 保留无效参数增加维护负担
+- 替代方案（CRLite）由浏览器自动处理，无需服务端配置
+
+### ADR-006: 证书同步并发锁（2025-10-06）
+**问题**: systemd timer 可能并发触发证书同步脚本
+
+**决策**: 使用 flock 非阻塞锁保护证书同步
+
+**理由**:
+- 防止竞态条件导致证书损坏或不一致
+- 非阻塞模式避免任务堆积，第二个实例立即退出
+- 符合项目已有 `core::with_flock` 模式
+
+### ADR-007: 强制配置验证（2025-10-06）
+**问题**: `XRF_SKIP_XRAY_TEST` 环境变量可能被滥用跳过验证
+
+**决策**: 完全删除配置测试跳过功能
+
+**理由**:
+- 配置验证是关键安全检查，不应可绕过
+- 简化代码逻辑，减少维护负担（删除 21 行冗余代码）
+- 符合"代码整洁优于兼容性"原则
+
 ## 核心教训总结
 
 1. **验证官方支持，不做假设**
@@ -393,6 +441,11 @@ timeout 3 bash -c "</dev/tcp/1.2.3.4/443" && echo "Reality accessible"
 5. **代码整洁优于兼容性**
    - 无用户则无负担，不做不必要的向后兼容
    - 删除不完整或废弃的代码
+
+6. **安全配置不可妥协**
+   - TLS 1.3 强制启用，无向下兼容（2025 安全标准）
+   - 配置验证总是执行，无跳过选项
+   - 并发保护必须实现，防止竞态条件
 
 ---
 

@@ -10,9 +10,10 @@ Group=xray
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 NoNewPrivileges=true
-ProtectSystem=full
+ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
+ReadWritePaths=/usr/local/etc/xray
 RestrictAddressFamilies=AF_INET AF_INET6
 ExecStart=/usr/local/bin/xray run -confdir /usr/local/etc/xray/active -format json
 # Note: Xray-core does not support graceful reload via SIGHUP

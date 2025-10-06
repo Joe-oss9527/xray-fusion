@@ -198,6 +198,14 @@ caddy::setup_cert_sync() {
 # 原子同步 Caddy 证书到 Xray 目录
 set -euo pipefail
 
+# 全局锁保护（非阻塞）
+exec 200>/var/lock/caddy-cert-sync.lock
+if ! flock -n 200; then
+  # 在日志函数定义前无法使用，直接输出
+  printf '[%s] %-5s [caddy-cert-sync] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "info" "another sync process is running, skipping" >&2
+  exit 0
+fi
+
 DOMAIN="${1:-}"
 CADDY_CERT_BASE="/root/.local/share/caddy/certificates"
 XRAY_CERT_DIR="/usr/local/etc/xray/certs"
