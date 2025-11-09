@@ -15,7 +15,7 @@
 - Run locally:
   - `bin/xrf install --topology reality-only`
   - `bin/xrf status`, `bin/xrf links`, `bin/xrf uninstall`
-  - Example safe sandbox: `XRF_PREFIX=$PWD/tmp/prefix XRF_ETC=$PWD/tmp/etc XRF_SKIP_XRAY_TEST=true bin/xrf install --topology reality-only`
+  - Example safe sandbox: `XRF_PREFIX=$PWD/tmp/prefix XRF_ETC=$PWD/tmp/etc bin/xrf install --topology reality-only`
 
 ## Coding Style & Naming Conventions
 - Language: Bash; start files with `#!/usr/bin/env bash` and `set -euo pipefail` where applicable.
@@ -26,12 +26,16 @@
 - Use helpers: `io::ensure_dir`, `io::atomic_write`, `core::log`, `core::with_flock`.
 
 ## Testing Guidelines
-- No unit test framework; rely on lint/format and functional flows.
-- Fast feedback: `make lint && make fmt`.
+- Test framework: bats-core with 96 unit tests across 5 test files.
+- Fast feedback: `make lint && make fmt && make test-unit`.
+- Run tests:
+  - `make test` — Run all tests (unit + integration)
+  - `make test-unit` — Run unit tests only
+  - `bats -t tests/unit/*.bats` — Run with verbose output
 - Functional checks:
-  - Dry config test is automatic unless skipped; to skip: `XRF_SKIP_XRAY_TEST=true`.
+  - Dry config test is automatic and cannot be skipped (see ADR-007).
   - Avoid touching system paths by overriding `XRF_PREFIX` and `XRF_ETC` to a temp dir.
-- Prefer validating inputs and error codes; don’t print secrets.
+- Prefer validating inputs and error codes; don't print secrets.
 
 ## Commit & Pull Request Guidelines
 - Commits: imperative, concise, scoped (e.g., “Fix …”, “Add …”, “Implement …”).

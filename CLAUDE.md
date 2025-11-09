@@ -443,7 +443,7 @@ timeout 3 bash -c "</dev/tcp/1.2.3.4/443" && echo "Reality accessible"
 
 **实现**:
 - 测试框架：bats-core + 自定义测试辅助函数
-- 单元测试：26 个测试用例覆盖核心模块
+- 单元测试：96 个测试用例覆盖核心模块（5 个测试文件）
 - CI/CD：GitHub Actions 6 个工作流（Lint, Format, Test, Security）
 - Makefile：统一的测试命令 (`make test`, `make test-unit`)
 
@@ -454,9 +454,12 @@ timeout 3 bash -c "</dev/tcp/1.2.3.4/443" && echo "Reality accessible"
 - 持续改进：测试覆盖率可以持续提升
 
 **测试覆盖**:
-- lib/args.sh: 100% (19 个测试)
-- lib/core.sh: ~85% (7 个测试)
-- 更多模块持续添加中
+- lib/args.sh: 100% (21 个测试)
+- lib/core.sh: ~85% (8 个测试)
+- lib/plugins.sh: ~90% (26 个测试)
+- modules/io.sh: ~95% (21 个测试)
+- services/xray/common.sh: 100% (20 个测试)
+- **总计**: 96 个测试用例，~80% 代码覆盖率
 
 ## 核心教训总结
 
