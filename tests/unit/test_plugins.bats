@@ -69,7 +69,7 @@ teardown() {
 @test "plugins::validate_id - rejects path traversal with .." {
   run plugins::validate_id "../malicious"
   [ "$status" -ne 0 ]
-  [[ "$output" == *"path traversal"* ]]
+  [[ "$output" == *"invalid plugin id"* ]]
 }
 
 @test "plugins::validate_id - rejects ID with slash" {
@@ -142,6 +142,7 @@ EOF
 # Test: plugins::load_enabled
 @test "plugins::load_enabled - loads valid plugin" {
   # Create a valid plugin
+  mkdir -p "${TEST_PLUGINS_DIR}/available/valid-plugin"
   cat > "${TEST_PLUGINS_DIR}/available/valid-plugin/plugin.sh" << 'EOF'
 XRF_PLUGIN_ID="valid-plugin"
 XRF_PLUGIN_VERSION="1.0.0"
@@ -160,6 +161,7 @@ EOF
 
 @test "plugins::load_enabled - skips plugin without XRF_PLUGIN_ID" {
   # Create an invalid plugin (missing ID)
+  mkdir -p "${TEST_PLUGINS_DIR}/available/invalid-plugin"
   cat > "${TEST_PLUGINS_DIR}/available/invalid-plugin/plugin.sh" << 'EOF'
 XRF_PLUGIN_VERSION="1.0.0"
 # Missing XRF_PLUGIN_ID
@@ -188,6 +190,7 @@ EOF
 # Test: plugins::emit
 @test "plugins::emit - calls plugin hook function" {
   # Create a plugin with a hook
+  mkdir -p "${TEST_PLUGINS_DIR}/available/hook-test"
   cat > "${TEST_PLUGINS_DIR}/available/hook-test/plugin.sh" << 'EOF'
 XRF_PLUGIN_ID="hook-test"
 XRF_PLUGIN_VERSION="1.0.0"
@@ -208,6 +211,7 @@ EOF
 
 @test "plugins::emit - skips plugins without matching hook" {
   # Create a plugin without the hook
+  mkdir -p "${TEST_PLUGINS_DIR}/available/no-hook"
   cat > "${TEST_PLUGINS_DIR}/available/no-hook/plugin.sh" << 'EOF'
 XRF_PLUGIN_ID="no-hook"
 XRF_PLUGIN_VERSION="1.0.0"
@@ -229,6 +233,7 @@ EOF
 # Test: plugins::info
 @test "plugins::info - displays plugin information" {
   # Create a test plugin
+  mkdir -p "${TEST_PLUGINS_DIR}/available/info-test"
   cat > "${TEST_PLUGINS_DIR}/available/info-test/plugin.sh" << 'EOF'
 XRF_PLUGIN_ID="info-test"
 XRF_PLUGIN_VERSION="2.0.0"
