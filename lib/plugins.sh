@@ -47,9 +47,8 @@ plugins::load_enabled() {
   project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
   for f in "${d}"/*.sh; do
     [[ -f "${f}" ]] || continue
-    local load_err
     # shellcheck disable=SC1090
-    if load_err=$(HERE="${project_root}" . "${f}" 2>&1); then
+    if HERE="${project_root}" . "${f}" 2> /dev/null; then
       # Validate required plugin variables
       if [[ -n "${XRF_PLUGIN_ID:-}" ]]; then
         local id="${XRF_PLUGIN_ID}" ver="${XRF_PLUGIN_VERSION:-0.0.0}" desc="${XRF_PLUGIN_DESC:-}" hooks="${XRF_PLUGIN_HOOKS[*]:-}"
@@ -59,7 +58,7 @@ plugins::load_enabled() {
         printf 'Warning: Plugin %s missing XRF_PLUGIN_ID\n' "$(basename "${f}")" >&2
       fi
     else
-      printf 'Warning: Failed to load plugin %s: %s\n' "$(basename "${f}")" "${load_err}" >&2
+      printf 'Warning: Failed to load plugin %s\n' "$(basename "${f}")" >&2
     fi
     # Clear plugin variables for next iteration
     unset XRF_PLUGIN_ID XRF_PLUGIN_VERSION XRF_PLUGIN_DESC XRF_PLUGIN_HOOKS

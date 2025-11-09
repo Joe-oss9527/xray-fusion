@@ -152,8 +152,8 @@ EOF
 
   plugins::enable "valid-plugin" >/dev/null
 
-  run plugins::load_enabled
-  [ "$status" -eq 0 ]
+  # Load plugins (not using run, so array changes persist)
+  plugins::load_enabled
 
   # Check that plugin was loaded
   [[ "${__PLUG_IDS[*]}" == *"valid-plugin"* ]]
@@ -202,7 +202,7 @@ hook_test::test_event() {
 EOF
 
   plugins::enable "hook-test" >/dev/null
-  plugins::load_enabled >/dev/null
+  plugins::load_enabled 2>/dev/null
 
   run plugins::emit "test_event" "arg1" "arg2"
   [ "$status" -eq 0 ]
