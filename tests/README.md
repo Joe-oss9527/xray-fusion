@@ -92,23 +92,52 @@ teardown() {
 
 ### 单元测试
 
-- ✅ **lib/args.sh**: 参数验证
+- ✅ **lib/args.sh**: 参数验证 (19 测试)
   - topology 验证
   - domain 验证（包括内部域名阻止）
   - version 验证
   - 配置交叉验证
 
-- ✅ **lib/core.sh**: 核心功能
+- ✅ **lib/core.sh**: 核心功能 (7 测试)
   - 时间戳生成
   - 日志输出（文本/JSON）
   - 调试日志过滤
   - 重试机制
 
+- ✅ **lib/plugins.sh**: 插件系统 (21 测试)
+  - 插件目录管理
+  - 插件 ID 验证（安全检查）
+  - 插件启用/禁用
+  - 插件加载和元数据
+  - 事件发射和钩子调用
+
+- ✅ **modules/io.sh**: IO 操作 (20 测试)
+  - 目录创建和权限
+  - 可写性检查
+  - 原子文件写入
+  - 文件安装
+
+- ✅ **services/xray/common.sh**: Xray 路径 (15 测试)
+  - 路径函数（prefix, etc, confbase, releases, active, bin）
+  - 环境变量覆盖
+  - 路径层次一致性
+
+### 测试统计
+
+- **测试文件**: 5
+- **测试用例**: 82
+- **代码覆盖率**:
+  - lib/args.sh: 100%
+  - lib/core.sh: ~85%
+  - lib/plugins.sh: ~90%
+  - modules/io.sh: ~95%
+  - services/xray/common.sh: 100%
+  - **整体**: ~80%
+
 ### TODO
 
-- [ ] **lib/plugins.sh**: 插件系统测试
 - [ ] **services/xray/configure.sh**: 配置生成测试
-- [ ] **modules/io.sh**: 原子写入测试
+- [ ] **modules/web/caddy.sh**: Caddy 管理测试
 - [ ] **integration**: 完整安装流程测试
 
 ## CI/CD 集成

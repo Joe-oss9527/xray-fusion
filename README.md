@@ -182,7 +182,10 @@ bats -t tests/unit/*.bats
 **测试覆盖率**:
 - ✅ lib/args.sh: 100% (参数验证)
 - ✅ lib/core.sh: ~85% (核心功能)
-- ⏳ 更多测试持续添加中...
+- ✅ lib/plugins.sh: ~90% (插件系统)
+- ✅ modules/io.sh: ~95% (IO 操作)
+- ✅ services/xray/common.sh: 100% (路径管理)
+- **整体覆盖率**: ~80% (82 个测试用例)
 
 详见 [tests/README.md](tests/README.md)
 
