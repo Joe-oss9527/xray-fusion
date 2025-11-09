@@ -3,7 +3,7 @@
 set -euo pipefail
 
 # 全局锁保护（非阻塞）
-exec 200>/var/lock/caddy-cert-sync.lock
+exec 200> /var/lock/caddy-cert-sync.lock
 if ! flock -n 200; then
   # 在日志函数定义前无法使用，直接输出
   printf '[%s] %-5s [caddy-cert-sync] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "info" "another sync process is running, skipping" >&2
@@ -37,7 +37,7 @@ log() {
 
 cleanup_tmpdir() {
   if [[ -n "${tmpdir:-}" && -d "${tmpdir}" ]]; then
-    rm -rf "${tmpdir}" 2>/dev/null || true
+    rm -rf "${tmpdir}" 2> /dev/null || true
   fi
 }
 
@@ -50,9 +50,9 @@ fi
 
 # 动态查找域名证书（支持任意 ACME provider 目录结构，选择最新的）
 cert_file=$(find "${CADDY_CERT_BASE}" -maxdepth 4 -type f -name "${DOMAIN}.crt" \
-  -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
+  -printf '%T@ %p\n' 2> /dev/null | sort -rn | head -1 | cut -d' ' -f2-)
 key_file=$(find "${CADDY_CERT_BASE}" -maxdepth 4 -type f -name "${DOMAIN}.key" \
-  -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
+  -printf '%T@ %p\n' 2> /dev/null | sort -rn | head -1 | cut -d' ' -f2-)
 
 if [[ ! -f "${cert_file}" ]]; then
   log error "certificate file not found for ${DOMAIN}"
@@ -70,13 +70,13 @@ log info "found certificate: ${cert_file}"
 log info "found private key: ${key_file}"
 
 # 证书验证：检查是否已过期
-if ! openssl x509 -in "${cert_file}" -noout -checkend 0 >/dev/null 2>&1; then
+if ! openssl x509 -in "${cert_file}" -noout -checkend 0 > /dev/null 2>&1; then
   log error "certificate has already expired - aborting sync"
   exit 1
 fi
 
 # 证书验证：检查有效期（7天警告窗口）
-if ! openssl x509 -in "${cert_file}" -noout -checkend 604800 >/dev/null 2>&1; then
+if ! openssl x509 -in "${cert_file}" -noout -checkend 604800 > /dev/null 2>&1; then
   log warn "certificate expires within 7 days - renewal may have failed"
 fi
 
@@ -87,8 +87,8 @@ validate_cert_key_match() {
 
   # 通用方法：比较公钥（适用于 RSA 和 ECDSA）
   local cert_pub key_pub
-  cert_pub=$(openssl x509 -in "${cert}" -pubkey -noout 2>/dev/null | sha256sum | awk '{print $1}')
-  key_pub=$(openssl pkey -in "${key}" -pubout 2>/dev/null | sha256sum | awk '{print $1}')
+  cert_pub=$(openssl x509 -in "${cert}" -pubkey -noout 2> /dev/null | sha256sum | awk '{print $1}')
+  key_pub=$(openssl pkey -in "${key}" -pubout 2> /dev/null | sha256sum | awk '{print $1}')
 
   if [[ -z "${cert_pub}" || -z "${key_pub}" ]]; then
     log error "failed to extract public keys for validation"
@@ -143,7 +143,7 @@ chmod 640 "${tmpdir}/privkey.pem" || {
 }
 
 # 设置所有权（验证 xray 组存在）
-if getent group xray >/dev/null 2>&1; then
+if getent group xray > /dev/null 2>&1; then
   chown root:xray "${tmpdir}"/*.pem || {
     log error "failed to set ownership (root:xray)"
     rm -rf "${tmpdir}" "${backup_dir}"
@@ -180,9 +180,9 @@ log info "certificates atomically updated for ${DOMAIN}"
 
 # 重启 Xray 服务（Xray 不支持 SIGHUP 优雅重载）
 # 参考: https://github.com/XTLS/Xray-core/discussions/1060
-if systemctl is-active --quiet xray 2>/dev/null; then
+if systemctl is-active --quiet xray 2> /dev/null; then
   log info "restarting xray service to apply new certificates"
-  if systemctl restart xray >/dev/null 2>&1; then
+  if systemctl restart xray > /dev/null 2>&1; then
     log info "xray service restarted successfully"
   else
     log error "failed to restart xray service"
