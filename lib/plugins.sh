@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Lightweight plugin loader + event bus
+# NOTE: This file is sourced. Strict mode is set by the calling script or core::init()
 
 plugins::base() {
   local here
@@ -46,7 +47,7 @@ plugins::load_enabled() {
   project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
   for f in "${d}"/*.sh; do
     [[ -f "${f}" ]] || continue
-    # shellcheck source=/dev/null
+    # shellcheck disable=SC1090
     if HERE="${project_root}" . "${f}" 2> /dev/null; then
       # Validate required plugin variables
       if [[ -n "${XRF_PLUGIN_ID:-}" ]]; then
@@ -54,10 +55,10 @@ plugins::load_enabled() {
         __PLUG_IDS+=("${id}")
         __PLUG_META["${id}"]="${ver}|${desc}|${hooks}"
       else
-        echo "Warning: Plugin $(basename "${f}") missing XRF_PLUGIN_ID" >&2
+        printf 'Warning: Plugin %s missing XRF_PLUGIN_ID\n' "$(basename "${f}")" >&2
       fi
     else
-      echo "Warning: Failed to load plugin $(basename "${f}")" >&2
+      printf 'Warning: Failed to load plugin %s\n' "$(basename "${f}")" >&2
     fi
     # Clear plugin variables for next iteration
     unset XRF_PLUGIN_ID XRF_PLUGIN_VERSION XRF_PLUGIN_DESC XRF_PLUGIN_HOOKS

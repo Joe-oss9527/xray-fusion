@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Unified argument parsing module for xray-fusion
 # Provides consistent parameter interface for both install.sh and xrf commands
+# NOTE: This file is sourced. Strict mode is set by the calling script or core::init()
 
 # Initialize default values
 args::init() {

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# State management module
+# NOTE: This file is sourced. Strict mode is set by core::init() from the calling script
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 . "${HERE}/modules/io.sh"
 
