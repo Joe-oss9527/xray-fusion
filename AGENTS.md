@@ -12,10 +12,12 @@
 ## Build, Test, and Development Commands
 - `make fmt` — Format all Bash with shfmt (2‑space, Bash mode).
 - `make lint` — ShellCheck across scripts (errors/warnings, `-x`).
+- `make test` — Run all tests (unit + integration).
+- `make test-unit` — Run unit tests only.
 - Run locally:
   - `bin/xrf install --topology reality-only`
   - `bin/xrf status`, `bin/xrf links`, `bin/xrf uninstall`
-  - Example safe sandbox: `XRF_PREFIX=$PWD/tmp/prefix XRF_ETC=$PWD/tmp/etc XRF_SKIP_XRAY_TEST=true bin/xrf install --topology reality-only`
+  - Example safe sandbox: `XRF_PREFIX=$PWD/tmp/prefix XRF_ETC=$PWD/tmp/etc bin/xrf install --topology reality-only`
 
 ## Coding Style & Naming Conventions
 - Language: Bash; start files with `#!/usr/bin/env bash` and `set -euo pipefail` where applicable.
@@ -25,16 +27,342 @@
 - File names: kebab‑case; plugins use ID `[a-zA-Z0-9_-]+` and functions via `plugins::fn_prefix`.
 - Use helpers: `io::ensure_dir`, `io::atomic_write`, `core::log`, `core::with_flock`.
 
+## Development Principles
+- **System debugging, no guessing**: Use logs to analyze and locate issues based on actual phenomena.
+- **Use project logging framework**: Consistently use `core::log`, never use `echo` for logs.
+- **Consult official docs first**: Avoid deprecated or outdated implementations.
+- **Keep code clean**: No unnecessary backward compatibility; delete incomplete/deprecated code.
+- **Scriptable everything**: Ensure all operations are parameterized via scripts, avoid manual intervention.
+
+## Shell Programming Best Practices
+
+### Logging Standards
+```bash
+# All logs go to stderr to avoid polluting function return values
+core::log() {
+  local lvl="${1}"; shift
+  local msg="${1}"; shift || true
+  local ctx="${1-{} }"
+
+  # Filter debug messages unless XRF_DEBUG=true
+  [[ "${lvl}" == "debug" && "${XRF_DEBUG}" != "true" ]] && return 0
+
+  # All logs to stderr
+  if [[ "${XRF_JSON}" == "true" ]]; then
+    printf '{"ts":"%s","level":"%s","msg":"%s","ctx":%s}\n' \
+      "$(core::ts)" "${lvl}" "${msg}" "${ctx}" >&2
+  else
+    printf '[%s] %-5s %s %s\n' "$(core::ts)" "${lvl}" "${msg}" "${ctx}" >&2
+  fi
+}
+
+# Standalone scripts embed compatible log function
+# For scripts like /usr/local/bin/caddy-cert-sync
+log() {
+  local lvl="${1}"; shift
+  local msg="${1}"
+  [[ "${lvl}" == "debug" && "${XRF_DEBUG}" != "true" ]] && return 0
+  if [[ "${XRF_JSON}" == "true" ]]; then
+    printf '{"ts":"%s","level":"%s","msg":"[script-name] %s"}\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${lvl}" "${msg}" >&2
+  else
+    printf '[%s] %-5s [script-name] %s\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${lvl}" "${msg}" >&2
+  fi
+}
+
+# External command output must also be redirected
+external-command >/dev/null 2>&1 || true
+```
+
+### Trap and Variable Scope
+```bash
+# ❌ Wrong: local variable in EXIT trap
+function_name() {
+  local tmpdir="$(mktemp -d)"
+  trap 'rm -rf "${tmpdir}"' EXIT  # Local variable may fail in trap
+}
+
+# ✅ Correct: Use global variable + parameter expansion
+function_name() {
+  local tmpdir="$(mktemp -d)"
+  _GLOBAL_TMPDIR="${tmpdir}"
+  trap 'rm -rf "${_GLOBAL_TMPDIR:-}" 2>/dev/null || true; unset _GLOBAL_TMPDIR' EXIT
+}
+
+# ✅ Better: Trap multiple signals
+cleanup() {
+  [[ -n "${tmpdir:-}" && -d "${tmpdir}" ]] && rm -rf "${tmpdir}"
+}
+trap cleanup EXIT INT TERM HUP
+```
+
+### Variable Pollution Defense
+```bash
+# ❌ Wrong: Directly sourcing external files may pollute variables
+. /etc/os-release  # VERSION gets overwritten by system version
+
+# ✅ Correct: Subshell isolation
+os_info=$(source /etc/os-release 2>/dev/null && echo "${ID:-unknown} ${VERSION_ID:-unknown}")
+```
+
 ## Testing Guidelines
-- No unit test framework; rely on lint/format and functional flows.
-- Fast feedback: `make lint && make fmt`.
+- Test framework: bats-core with 96 unit tests across 5 test files.
+- Fast feedback: `make lint && make fmt && make test-unit`.
+- Run tests:
+  - `make test` — Run all tests (unit + integration)
+  - `make test-unit` — Run unit tests only
+  - `bats -t tests/unit/*.bats` — Run with verbose output
 - Functional checks:
-  - Dry config test is automatic unless skipped; to skip: `XRF_SKIP_XRAY_TEST=true`.
+  - Dry config test is automatic and cannot be skipped (see ADR-007 in CLAUDE.md).
   - Avoid touching system paths by overriding `XRF_PREFIX` and `XRF_ETC` to a temp dir.
-- Prefer validating inputs and error codes; don’t print secrets.
+- Prefer validating inputs and error codes; don't print secrets.
+- Test coverage: ~80% (96 tests across lib/args.sh, lib/core.sh, lib/plugins.sh, modules/io.sh, services/xray/common.sh)
+
+## Xray Configuration Best Practices
+
+### Vision-Reality Topology
+- **Reality Port**: 443 (standard HTTPS, officially recommended)
+- **Vision Port**: 8443 (real TLS, avoids conflict with Reality)
+- **Caddy HTTPS Port**: 8444 (avoids occupying 443)
+
+### Certificate Permissions
+```bash
+# Xray service runs as xray user, needs to read private key
+chmod 644 fullchain.pem
+chmod 640 privkey.pem
+chown root:xray *.pem
+```
+
+### VLESS+REALITY Core Concepts
+- REALITY protocol **does not require domain ownership**
+- SNI is used for camouflage (e.g., `www.microsoft.com` is a valid config)
+- Reality cannot be forwarded through regular reverse proxies (like Caddy)
+
+### TLS Configuration
+```json
+{
+  "minVersion": "1.3",  // 2025 security standard, enforce TLS 1.3
+  "serverName": "example.com"
+  // Note: No longer use ocspStapling (Let's Encrypt stopped OCSP service on 2025-01-30)
+}
+```
+
+### shortIds Configuration
+- shortIds is a server-side **pool** that clients choose from
+- Not "must be unique per client", but "provides differentiation capability"
+- Single shortId is sufficient for personal use; multi-user scenarios can expand the pool
+
+### spiderX Parameter
+- spiderX is a **client parameter**, not a server-enforced value
+- Server-side `"spiderX": "/"` is an example path
+- Client link `spx=%2F` is the actual value used
+
+## Certificate Management
+
+### Automation Solution Choice
+- ✅ **Caddy**: Mature automatic certificate management (reference: 233boy/Xray)
+- ❌ **acme.sh**: Lacks complete integration logic, high maintenance complexity
+
+### Certificate Sync Atomicity
+```bash
+# ✅ Use same-partition temp dir + mv (POSIX guarantees atomicity)
+tmpdir=$(mktemp -d -p "${TARGET_DIR}" .sync.XXXXXX)
+cp source "${tmpdir}/file"
+chmod 644 "${tmpdir}/file"
+mv -f "${tmpdir}/file" "${TARGET_DIR}/file"  # Atomic operation
+
+# ⚠️ Avoid cross-partition mv (non-atomic, actually copy + delete)
+mktemp -d -p /tmp  # /tmp usually on different partition or ramfs
+```
+
+### Certificate Validation (Supports RSA and ECDSA)
+```bash
+# ✅ Universal method: Compare public key hashes
+cert_pub=$(openssl x509 -in cert.pem -pubkey -noout | sha256sum | awk '{print $1}')
+key_pub=$(openssl pkey -in key.pem -pubout | sha256sum | awk '{print $1}')
+[[ "${cert_pub}" == "${key_pub}" ]] || exit 1
+
+# ❌ Old method: RSA only
+cert_modulus=$(openssl x509 -noout -modulus -in cert.pem | openssl md5)
+key_modulus=$(openssl rsa -noout -modulus -in key.pem | openssl md5)
+```
+
+### Sync Failure Rollback
+```bash
+# Backup existing certificates
+backup_dir="${TARGET_DIR}/.backup.$$"
+cp -a existing_cert "${backup_dir}/"
+
+# Atomic move of both files
+mv -f new_fullchain.pem target/
+if ! mv -f new_privkey.pem target/; then
+  # Rollback
+  mv -f "${backup_dir}/fullchain.pem" target/
+  exit 1
+fi
+rm -rf "${backup_dir}"
+```
+
+### systemd Integration Strategy
+```ini
+# ✅ Use Timer (reliable, predictable)
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min  # Certificate changes infrequently, 10 min is sufficient
+Persistent=true
+
+# ❌ Avoid Path unit (inotify unreliable on nested dirs/NFS)
+[Path]
+PathChanged=/path/to/certs  # Has built-in delay, unreliable on some filesystems
+```
+
+### Certificate Validity Check
+```bash
+# Check if expired (reject sync)
+openssl x509 -in cert.pem -noout -checkend 0 || exit 1
+
+# 7-day warning window (24 hours too short)
+openssl x509 -in cert.pem -noout -checkend 604800 || log warn "expires soon"
+```
+
+### Concurrency Protection
+```bash
+# ✅ Certificate sync script must add global lock (prevent systemd timer concurrent triggers)
+exec 200>/var/lock/caddy-cert-sync.lock
+if ! flock -n 200; then
+  log info "another sync process is running, skipping"
+  exit 0
+fi
+
+# Existing sync logic...
+```
+
+### Xray Restart Strategy
+**Important**: Xray-core **does not support** SIGHUP graceful reload
+- Reference: https://github.com/XTLS/Xray-core/discussions/1060
+- Official install scripts never include `ExecReload` directive
+
+```bash
+# ❌ Wrong: Xray doesn't support reload
+systemctl reload xray
+
+# ✅ Correct: Must restart after certificate update
+systemctl restart xray
+```
+
+### systemd Service Hardening
+```ini
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/cert-sync
+
+# Security restrictions
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/usr/local/etc/xray/certs
+NoNewPrivileges=true
+
+# Resource limits
+MemoryMax=50M
+TasksMax=10
+```
+
+## Parameter System Design
+
+### Unified Parameter Format
+```bash
+# install.sh and xrf use exactly the same parameters
+--topology reality-only|vision-reality
+--domain <domain>           # Required for vision-reality
+--version <version>         # default: latest
+--plugins <plugin1,plugin2>
+--debug
+
+# Pipe-friendly (env vars don't work in pipes)
+curl -sL install.sh | bash -s -- --domain example.com
+```
+
+### Parameter Validation Principles
+```bash
+# Input validation
+args::validate_topology()  # Only allow reality-only|vision-reality
+args::validate_domain()    # RFC compliant + forbid internal domains
+args::validate_version()   # latest or vX.Y.Z
+
+# Cross validation
+args::validate_config()    # vision-reality requires domain
+
+# ✅ Correct: Exit immediately on validation failure
+args::validate_topology "${2}" || return 1
+TOPOLOGY="${2}"
+
+# ❌ Wrong: Continue execution after validation failure
+args::validate_topology "${2}"  # Not checking return value
+TOPOLOGY="${2}"
+```
+
+### Domain Validation (RFC Compliant)
+```bash
+# ✅ Correct regex (prevent ..com, -.com)
+[[ "${domain}" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$ ]]
+
+# Forbid internal domains
+case "${domain}" in
+  localhost|*.local|127.*|10.*|172.1[6-9].*|172.2[0-9].*|172.3[0-1].*|192.168.*)
+    return 1 ;;
+esac
+```
+
+## Common Commands
+
+### Build and Install
+```bash
+# Local install
+bin/xrf install --topology reality-only
+
+# Vision-Reality topology with plugins
+bin/xrf install --topology vision-reality --domain your.domain.com --plugins cert-auto
+
+# One-liner install (pipe-friendly)
+curl -sL install.sh | bash -s -- --topology reality-only
+
+# Uninstall
+bin/xrf uninstall
+```
+
+### Debugging
+```bash
+# Enable debug logs
+XRF_DEBUG=true bin/xrf install --topology reality-only
+
+# JSON format logs
+XRF_JSON=true bin/xrf install --topology reality-only
+
+# View service status
+systemctl status xray
+journalctl -u xray -f
+
+# Test certificate sync
+/usr/local/bin/caddy-cert-sync example.com
+
+# Verify systemd timer
+systemctl list-timers cert-reload.timer
+systemctl status cert-reload.timer
+```
+
+### Endpoint Verification
+```bash
+# Vision endpoint test
+timeout 3 bash -c "</dev/tcp/domain.com/8443" && echo "Vision accessible"
+
+# Reality endpoint test
+timeout 3 bash -c "</dev/tcp/1.2.3.4/443" && echo "Reality accessible"
+```
 
 ## Commit & Pull Request Guidelines
-- Commits: imperative, concise, scoped (e.g., “Fix …”, “Add …”, “Implement …”).
+- Commits: imperative, concise, scoped (e.g., "Fix …", "Add …", "Implement …").
 - Group related changes; keep diffs minimal; reference areas (commands/lib/services/plugins) in the body when useful.
 - PRs must include:
   - Summary of changes and rationale
@@ -48,3 +376,6 @@
 - Supported hooks include: `configure_pre|configure_post|deploy_post|service_setup|service_remove|links_render|uninstall_pre`.
 - Validate IDs with `plugins::validate_id`; never traverse paths; use repo helpers.
 
+---
+
+**Architecture Decisions & Lessons Learned**: See [@CLAUDE.md](./CLAUDE.md) for ADRs and core lessons.
