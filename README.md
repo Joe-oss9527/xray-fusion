@@ -145,13 +145,57 @@ XRAY_SNI=www.microsoft.com  # Reality 伪装域名
 
 ## 开发
 
+### 代码质量
+
+[![Tests](https://github.com/Joe-oss9527/xray-fusion/actions/workflows/test.yml/badge.svg)](https://github.com/Joe-oss9527/xray-fusion/actions/workflows/test.yml)
+
 ```bash
 # 代码格式化
 make fmt
 
 # 代码检查
 make lint
+
+# 运行测试
+make test
+
+# 运行单元测试
+make test-unit
 ```
+
+### 测试框架
+
+项目使用 [bats-core](https://github.com/bats-core/bats-core) 测试框架：
+
+```bash
+# 安装 bats-core
+sudo apt-get install bats  # Ubuntu/Debian
+brew install bats-core      # macOS
+
+# 运行所有测试
+bats tests/unit/*.bats
+
+# 详细输出
+bats -t tests/unit/*.bats
+```
+
+**测试覆盖率**:
+- ✅ lib/args.sh: 100% (参数验证)
+- ✅ lib/core.sh: ~85% (核心功能)
+- ⏳ 更多测试持续添加中...
+
+详见 [tests/README.md](tests/README.md)
+
+### CI/CD
+
+项目配置了完整的 GitHub Actions 工作流：
+
+- 🔍 **Lint**: ShellCheck 静态分析
+- 📐 **Format Check**: shfmt 格式验证
+- 🧪 **Unit Tests**: 多版本 Ubuntu 测试
+- 🔒 **Security Scan**: 安全检查
+
+所有提交和 PR 会自动运行测试。
 
 ## 许可证
 
