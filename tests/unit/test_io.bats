@@ -5,6 +5,8 @@ load ../test_helper
 
 setup() {
   setup_test_env
+  # Source io module
+  source "${PROJECT_ROOT}/modules/io.sh"
 }
 
 teardown() {

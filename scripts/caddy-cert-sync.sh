@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # 原子同步 Caddy 证书到 Xray 目录
 set -euo pipefail
 
