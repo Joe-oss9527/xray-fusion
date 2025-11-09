@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# Common test helper functions for xray-fusion tests
+# This file is sourced by all test files
+
+# Project root directory
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export PROJECT_ROOT
+
+# Source core modules for testing
+source "${PROJECT_ROOT}/lib/core.sh"
+source "${PROJECT_ROOT}/lib/args.sh"
+source "${PROJECT_ROOT}/lib/plugins.sh"
+
+# Test fixtures directory
+FIXTURES="${PROJECT_ROOT}/tests/fixtures"
+export FIXTURES
+
+# Temporary directory for test isolation
+setup_test_env() {
+  export TEST_TMPDIR="$(mktemp -d -t xray-fusion-test.XXXXXX)"
+  export XRF_PREFIX="${TEST_TMPDIR}/usr/local"
+  export XRF_ETC="${TEST_TMPDIR}/etc"
+  export XRF_VAR="${TEST_TMPDIR}/var/lib/xray-fusion"
+}
+
+cleanup_test_env() {
+  [[ -n "${TEST_TMPDIR:-}" && -d "${TEST_TMPDIR}" ]] && rm -rf "${TEST_TMPDIR}"
+  unset TEST_TMPDIR XRF_PREFIX XRF_ETC XRF_VAR
+}
+
+# Assertion helpers
+assert_file_exists() {
+  local file="${1}"
+  [[ -f "${file}" ]] || {
+    echo "FAILED: File does not exist: ${file}" >&2
+    return 1
+  }
+}
+
+assert_dir_exists() {
+  local dir="${1}"
+  [[ -d "${dir}" ]] || {
+    echo "FAILED: Directory does not exist: ${dir}" >&2
+    return 1
+  }
+}
+
+assert_equals() {
+  local expected="${1}"
+  local actual="${2}"
+  local msg="${3:-}"
+  [[ "${expected}" == "${actual}" ]] || {
+    echo "FAILED: Expected '${expected}', got '${actual}'" >&2
+    [[ -n "${msg}" ]] && echo "  ${msg}" >&2
+    return 1
+  }
+}
+
+assert_contains() {
+  local haystack="${1}"
+  local needle="${2}"
+  [[ "${haystack}" == *"${needle}"* ]] || {
+    echo "FAILED: '${haystack}' does not contain '${needle}'" >&2
+    return 1
+  }
+}
+
+assert_command_success() {
+  local cmd="${1}"
+  shift
+  if ! "${cmd}" "$@"; then
+    echo "FAILED: Command failed: ${cmd} $*" >&2
+    return 1
+  fi
+}
+
+assert_command_fails() {
+  local cmd="${1}"
+  shift
+  if "${cmd}" "$@"; then
+    echo "FAILED: Command should have failed: ${cmd} $*" >&2
+    return 1
+  fi
+}
