@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Core utils: strict-mode (only via init), logging, retry
+# NOTE: This file is sourced. Strict mode (set -euo pipefail) is set by core::init()
+#       which must be called by the main script.
 
 core::init() {
   set -euo pipefail -E

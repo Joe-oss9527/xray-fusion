@@ -144,8 +144,8 @@ JSON
   done
 
   core::log debug "listing generated config files" "{}"
-  ls -la "${d}"/*.json | while read -r line; do
-    core::log debug "config file" "$(printf '{"file":"%s"}' "${line}")"
+  for f in "${d}"/*.json; do
+    [[ -f "${f}" ]] && core::log debug "config file" "$(printf '{"file":"%s"}' "${f}")"
   done
 
   core::log debug "emitting configure_post" "$(printf '{"topology":"%s","release_dir":"%s"}' "${topology}" "${d}")"

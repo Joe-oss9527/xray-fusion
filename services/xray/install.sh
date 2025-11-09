@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 . "${HERE}/lib/core.sh"
 . "${HERE}/modules/io.sh"
@@ -52,8 +53,11 @@ xray::install() {
 
   tmp="$(mktemp -d)"
   trap 'rm -rf "${tmp}"' EXIT
-  core::log info "download" "$(printf '{"url":"%s"}' "${url}")"
-  curl -fsSL "${url}" -o "${tmp}/xray.zip"
+  core::log info "downloading xray" "$(printf '{"url":"%s","version":"%s"}' "${url}" "${version}")"
+  if ! curl -fsSL "${url}" -o "${tmp}/xray.zip"; then
+    core::log error "download failed" "$(printf '{"url":"%s","hint":"Check network or try: XRAY_URL=<mirror-url>"}' "${url}")"
+    exit 4
+  fi
 
   if [[ -z "${sha}" ]]; then
     sha="$(curl -fsSL "${url}.dgst" 2> /dev/null | awk 'match($0,/^SHA2?-?256[= ] *([0-9A-Fa-f]{64})/,m){print m[1]; exit} match($0,/^SHA256 \([^)]+\) = ([0-9A-Fa-f]{64})/,m){print m[1]; exit} match($0,/^([0-9A-Fa-f]{64})[[:space:]]+/,m){print m[1]; exit}')" || true
@@ -62,11 +66,11 @@ xray::install() {
   # Security: Validate SHA256 format regardless of source
   if [[ -n "${sha}" ]]; then
     if [[ ! "${sha}" =~ ^[0-9A-Fa-f]{64}$ ]]; then
-      core::log error "invalid SHA256 format" "$(printf '{"sha256":"%s"}' "${sha}")"
+      core::log error "invalid SHA256 format" "$(printf '{"sha256":"%s","source":"dgst_file"}' "${sha}")"
       exit 5
     fi
   else
-    core::log error "missing SHA256 (set XRAY_SHA256 to override)" "{}"
+    core::log error "missing SHA256 checksum" "$(printf '{"dgst_url":"%s.dgst","hint":"Set XRAY_SHA256 env var or check network connectivity"}' "${url}")"
     exit 5
   fi
   got="$(sha256sum "${tmp}/xray.zip" | awk '{print $1}')"
