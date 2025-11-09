@@ -47,8 +47,8 @@ plugins::load_enabled() {
   project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
   for f in "${d}"/*.sh; do
     [[ -f "${f}" ]] || continue
-    # shellcheck source=/dev/null
     local load_err
+    # shellcheck disable=SC1090
     if load_err=$(HERE="${project_root}" . "${f}" 2>&1); then
       # Validate required plugin variables
       if [[ -n "${XRF_PLUGIN_ID:-}" ]]; then
