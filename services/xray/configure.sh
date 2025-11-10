@@ -93,8 +93,7 @@ xray::render_reality_inbound() {
   : "${XRAY_SHORT_ID:?}" : "${XRAY_PRIVATE_KEY:?}"
 
   [[ -n "${XRAY_PRIVATE_KEY}" ]] || {
-    core::log error "XRAY_PRIVATE_KEY required"
-    exit 2
+    core::log fatal "XRAY_PRIVATE_KEY required"
   }
 
   # Prepare configuration values
@@ -130,14 +129,12 @@ xray::render_vision_reality_inbounds() {
 
   # Check for required TLS certificates
   if [[ ! -f "${XRAY_CERT_DIR}/fullchain.pem" || ! -f "${XRAY_CERT_DIR}/privkey.pem" ]]; then
-    core::log error "vision-reality requires TLS certificates" "$(printf '{"cert_dir":"%s","suggestion":"Use: --plugins cert-auto"}' \
+    core::log fatal "vision-reality requires TLS certificates" "$(printf '{"cert_dir":"%s","suggestion":"Use: --plugins cert-auto"}' \
       "${XRAY_CERT_DIR}")"
-    exit 2
   fi
 
   [[ -n "${XRAY_PRIVATE_KEY}" ]] || {
-    core::log error "XRAY_PRIVATE_KEY required"
-    exit 2
+    core::log fatal "XRAY_PRIVATE_KEY required"
   }
 
   # Prepare configuration values
@@ -212,8 +209,7 @@ render_release() {
       xray::render_vision_reality_inbounds "${release_dir}" "${sniff_bool}"
       ;;
     *)
-      core::log error "unknown topology" "$(printf '{"topology":"%s"}' "${topology}")"
-      exit 3
+      core::log fatal "unknown topology" "$(printf '{"topology":"%s"}' "${topology}")"
       ;;
   esac
 
@@ -296,8 +292,7 @@ main() {
   case "${topology}" in
     "reality-only" | "vision-reality") ;;
     *)
-      core::log error "invalid topology" "$(printf '{"topology":"%s","valid_options":"reality-only,vision-reality"}' "${topology}")"
-      exit 1
+      core::log fatal "invalid topology" "$(printf '{"topology":"%s","valid_options":"reality-only,vision-reality"}' "${topology}")"
       ;;
   esac
   plugins::ensure_dirs

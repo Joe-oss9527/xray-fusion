@@ -45,6 +45,7 @@ core::init() {
 # ERR trap handler for error logging
 #
 # Internal function called by ERR trap to log error details before exit.
+# Uses critical level to indicate severe error condition.
 #
 # Arguments:
 #   $1 - Return code (number, required)
@@ -59,7 +60,8 @@ core::init() {
 ##
 core::error_handler() {
   local return_code="${1}" line_number="${2}" command="${3}"
-  core::log error "trap" "$(printf '{"rc":%d,"line":%d,"cmd":"%s"}' "${return_code}" "${line_number}" "${command//\"/\\\"}")"
+  # Use critical level for ERR trap (doesn't exit, trap will handle that)
+  core::log critical "ERR trap" "$(printf '{"rc":%d,"line":%d,"cmd":"%s"}' "${return_code}" "${line_number}" "${command//\"/\\\"}")"
   exit "${return_code}"
 }
 
@@ -81,8 +83,13 @@ core::ts() { date -u +'%Y-%m-%dT%H:%M:%SZ'; }
 # All output goes to stderr to avoid contaminating function
 # return values. Debug messages are filtered unless XRF_DEBUG=true.
 #
+# Supports log levels: debug, info, warn, error, critical, fatal
+# - fatal: Immediately exits with code 1 after logging
+# - critical: Logs severe error but does not exit
+# - error/warn/info/debug: Standard log levels
+#
 # Arguments:
-#   $1 - Log level (string, required) - debug|info|warn|error
+#   $1 - Log level (string, required) - debug|info|warn|error|critical|fatal
 #   $2 - Message (string, required)
 #   $3 - Context JSON (string, optional, default: "{}")
 #
@@ -94,12 +101,14 @@ core::ts() { date -u +'%Y-%m-%dT%H:%M:%SZ'; }
 #   Log line to stderr (text or JSON format)
 #
 # Returns:
-#   0 - Always succeeds (or returns early for filtered debug)
+#   0 - Success (debug/info/warn/error/critical)
+#   Exits 1 - If level is fatal
 #
 # Example:
 #   core::log info "Operation completed" '{"duration_ms":123}'
 #   core::log error "Failed to read file" "$(printf '{"file":"%s"}' "${path}")"
-#   core::log debug "Variable value" "$(printf '{"var":"%s"}' "${value}")"
+#   core::log critical "Database corrupted" '{"db":"/var/lib/app/data.db"}'
+#   core::log fatal "Missing required configuration"  # Exits immediately
 ##
 core::log() {
   local lvl="${1}"
@@ -113,12 +122,25 @@ core::log() {
     return 0
   fi
 
+  # Normalize fatal/critical to uppercase for visibility in text output
+  local display_lvl="${lvl}"
+  if [[ "${lvl}" == "fatal" || "${lvl}" == "critical" ]]; then
+    display_lvl="${lvl^^}"  # Convert to uppercase
+  fi
+
   # All logs go to stderr to avoid contaminating function outputs
   if [[ "${XRF_JSON}" == "true" ]]; then
     printf '{"ts":"%s","level":"%s","msg":"%s","ctx":%s}\n' "$(core::ts)" "${lvl}" "${msg}" "${ctx}" >&2
   else
-    printf '[%s] %-5s %s %s\n' "$(core::ts)" "${lvl}" "${msg}" "${ctx}" >&2
+    printf '[%s] %-8s %s %s\n' "$(core::ts)" "${display_lvl}" "${msg}" "${ctx}" >&2
   fi
+
+  # Fatal errors exit immediately
+  if [[ "${lvl}" == "fatal" ]]; then
+    exit 1
+  fi
+
+  return 0
 }
 
 ##
