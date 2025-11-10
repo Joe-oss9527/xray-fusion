@@ -30,21 +30,21 @@ io::atomic_write() {
 
   # Write content to temp file
   if ! cat > "${tmp}"; then
-    rm -f "${tmp}" 2>/dev/null || true
+    rm -f "${tmp}" 2> /dev/null || true
     return 1
   fi
 
   # Move to final location
   if io::writable "${dstdir}"; then
     if ! mv -f "${tmp}" "${dst}"; then
-      rm -f "${tmp}" 2>/dev/null || true
+      rm -f "${tmp}" 2> /dev/null || true
       return 1
     fi
     chmod "${mode}" "${dst}" || true
   else
     core::log warn "write needs sudo" "$(printf '{"file":"%s"}' "${dst}")"
     if ! sudo mv -f "${tmp}" "${dst}"; then
-      rm -f "${tmp}" 2>/dev/null || true
+      rm -f "${tmp}" 2> /dev/null || true
       return 1
     fi
     sudo chmod "${mode}" "${dst}" || true
