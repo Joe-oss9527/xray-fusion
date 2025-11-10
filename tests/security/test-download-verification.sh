@@ -9,18 +9,21 @@ trap 'rm -rf "${TEST_DIR}"' EXIT
 
 log_info() { echo "[INFO] ${*}"; }
 log_error() { echo "[ERROR] ${*}" >&2; }
-error_exit() { log_error "${*}"; exit 1; }
+error_exit() {
+  log_error "${*}"
+  exit 1
+}
 
 # Test 1: Verify that install.sh does NOT source lib/download.sh before verification
 log_info "Test 1: Checking source order in install.sh"
 
 # Search for source statements that reference downloaded code
-if grep -n "source.*xray-fusion/lib/core\.sh" install.sh 2>/dev/null; then
+if grep -n "source.*xray-fusion/lib/core\.sh" install.sh 2> /dev/null; then
   log_error "FAIL: install.sh sources lib/core.sh from downloaded code"
   exit 1
 fi
 
-if grep -n "source.*xray-fusion/lib/download\.sh" install.sh 2>/dev/null; then
+if grep -n "source.*xray-fusion/lib/download\.sh" install.sh 2> /dev/null; then
   log_error "FAIL: install.sh sources lib/download.sh from downloaded code"
   exit 1
 fi
@@ -63,7 +66,7 @@ log_info "Test 3: Checking verification implementation"
 sed -n '/Verify download integrity BEFORE sourcing/,/END: Verification/p' install.sh > "${TEST_DIR}/verification.sh"
 
 # Check that it uses only system commands (source, eval, or ". script")
-if grep -E "^\s*(source|\\.\s+|eval)\s+" "${TEST_DIR}/verification.sh" | grep -v "^#" >/dev/null; then
+if grep -E "^\s*(source|\\.\s+|eval)\s+" "${TEST_DIR}/verification.sh" | grep -v "^#" > /dev/null; then
   log_error "FAIL: Verification uses dangerous commands (source/./eval)"
   grep -E "^\s*(source|\\.\s+|eval)\s+" "${TEST_DIR}/verification.sh" | grep -v "^#"
   exit 1
