@@ -79,7 +79,11 @@ core::with_flock() {
       sudo install -m 0644 -o "$(id -u)" -g "$(id -g)" /dev/null "${lock}" 2> /dev/null || true
     fi
   else
-    # Lock file exists, ensure correct permissions
+    # Lock file exists, ensure correct ownership and permissions
+    # This handles cases where the lock was created by a previous root run
+    if ! chown "$(id -u):$(id -g)" "${lock}" 2> /dev/null; then
+      sudo chown "$(id -u):$(id -g)" "${lock}" 2> /dev/null || true
+    fi
     if ! chmod 0644 "${lock}" 2> /dev/null; then
       sudo chmod 0644 "${lock}" 2> /dev/null || true
     fi

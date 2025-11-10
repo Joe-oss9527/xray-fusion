@@ -28,7 +28,13 @@ io::atomic_write() {
   # Use hidden prefix to prevent conflicts and mktemp XXXXXX for unpredictability
   tmp="$(mktemp -p "${dstdir}" .atomic-write.XXXXXX.tmp)" || return 1
 
-  # Ensure temp file is cleaned up on error
+  # Save existing traps to restore later (preserve caller's cleanup handlers)
+  local old_trap_exit old_trap_int old_trap_term
+  old_trap_exit="$(trap -p EXIT)"
+  old_trap_int="$(trap -p INT)"
+  old_trap_term="$(trap -p TERM)"
+
+  # Install temporary cleanup trap
   trap 'rm -f "${tmp}" 2>/dev/null || true' EXIT INT TERM
 
   cat > "${tmp}"
@@ -42,8 +48,10 @@ io::atomic_write() {
     sudo chmod "${mode}" "${dst}" || true
   fi
 
-  # Clear trap on success
-  trap - EXIT INT TERM
+  # Restore previous traps (don't clobber caller's cleanup handlers)
+  [[ -n "${old_trap_exit}" ]] && eval "${old_trap_exit}" || trap - EXIT
+  [[ -n "${old_trap_int}" ]] && eval "${old_trap_int}" || trap - INT
+  [[ -n "${old_trap_term}" ]] && eval "${old_trap_term}" || trap - TERM
 }
 
 io::install_file() {
