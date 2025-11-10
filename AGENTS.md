@@ -97,61 +97,54 @@ cleanup() {
 trap cleanup EXIT INT TERM HUP
 ```
 
-### Preserving Caller Traps
+### Avoiding Traps in Utility Functions
 
-**Critical**: When installing temporary traps in a function, always save and restore the caller's trap handlers. Unconditionally clearing traps destroys outer cleanup logic and causes resource leaks.
+**Critical**: Do NOT use EXIT/INT/TERM traps in utility functions. Traps are process-level and cause unpredictable behavior in pipelines, subshells, and test frameworks.
 
 ```bash
-# ❌ Wrong: Clobbers caller's cleanup handlers
+# ❌ Wrong: Using traps in utility function
 function_with_trap() {
   local tmp="$(mktemp)"
-  trap 'rm -f "${tmp}"' EXIT INT TERM
-  # ... operations ...
-  trap - EXIT INT TERM  # Bug: removes caller's cleanup!
+  trap 'rm -f "${tmp}"' EXIT INT TERM  # Bug: triggers unexpectedly!
+  cat > "${tmp}"
+  mv "${tmp}" "/destination"
+  trap - EXIT INT TERM
 }
 
-# Caller's trap is permanently lost:
-cleanup() { rm -rf "${TEMP_DIR}"; }
-trap cleanup EXIT
-function_with_trap "/file"  # cleanup never runs → resource leak
+# Caller uses pipeline:
+echo "data" | function_with_trap  # Fails! EXIT trap triggers in pipeline
 
-# ✅ Correct: Preserve and restore caller's traps
-function_with_trap() {
+# ✅ Correct: Explicit cleanup on error paths
+function_without_trap() {
   local tmp="$(mktemp)"
 
-  # Save existing traps
-  local old_trap_exit="$(trap -p EXIT)"
-  local old_trap_int="$(trap -p INT)"
-  local old_trap_term="$(trap -p TERM)"
-
-  # Install temporary trap
-  trap 'rm -f "${tmp}" 2>/dev/null || true' EXIT INT TERM
-
-  # ... operations ...
-
-  # Restore previous traps (don't clobber caller's cleanup)
-  if [[ -n "${old_trap_exit}" ]]; then
-    eval "${old_trap_exit}"
-  else
-    trap - EXIT
+  # Write content
+  if ! cat > "${tmp}"; then
+    rm -f "${tmp}" 2>/dev/null || true
+    return 1
   fi
-  if [[ -n "${old_trap_int}" ]]; then
-    eval "${old_trap_int}"
-  else
-    trap - INT
+
+  # Move to destination
+  if ! mv "${tmp}" "/destination"; then
+    rm -f "${tmp}" 2>/dev/null || true
+    return 1
   fi
-  if [[ -n "${old_trap_term}" ]]; then
-    eval "${old_trap_term}"
-  else
-    trap - TERM
-  fi
+
+  # Success - temp file moved
+  return 0
 }
 ```
 
-**Why this matters**:
-- Functions should not have invisible side effects on caller's environment
-- Cleanup handlers are critical for resource management
-- Preserving traps maintains function encapsulation
+**Why traps fail in utility functions**:
+- EXIT trap is process-level, not function-level
+- In pipelines, each command runs in a subshell with separate trap context
+- Restoring traps with `eval "trap..."` can trigger them immediately
+- Test frameworks (like bats) rely on traps and will break
+
+**Better approach**:
+- Use explicit error checking (`if ! command; then cleanup; return 1; fi`)
+- Accept that temp files may leak on SIGKILL (use hidden prefix to avoid conflicts)
+- Keep utility functions stateless and side-effect free
 
 **Reference**: See `modules/io.sh::atomic_write()` for production implementation
 
@@ -174,7 +167,7 @@ io::atomic_write_old() {
   mv -f "${tmp}" "${dst}"  # May fail if cross-partition
 }
 
-# ✅ Correct: Secure temp file creation with proper cleanup
+# ✅ Correct: Secure temp file creation with explicit error handling
 io::atomic_write() {
   local dst="${1}" mode="${2:-0644}"
   local dstdir tmp
@@ -184,34 +177,20 @@ io::atomic_write() {
   # Use hidden prefix + XXXXXX for unpredictability
   tmp="$(mktemp -p "${dstdir}" .atomic-write.XXXXXX.tmp)" || return 1
 
-  # Save existing traps to restore later
-  local old_trap_exit="$(trap -p EXIT)"
-  local old_trap_int="$(trap -p INT)"
-  local old_trap_term="$(trap -p TERM)"
+  # Write content to temp file
+  if ! cat > "${tmp}"; then
+    rm -f "${tmp}" 2>/dev/null || true
+    return 1
+  fi
 
-  # Install temporary cleanup trap
-  trap 'rm -f "${tmp}" 2>/dev/null || true' EXIT INT TERM
+  # Move to final location (atomic on same filesystem)
+  if ! mv -f "${tmp}" "${dst}"; then
+    rm -f "${tmp}" 2>/dev/null || true
+    return 1
+  fi
 
-  cat > "${tmp}"
-  mv -f "${tmp}" "${dst}"  # Atomic on same filesystem
   chmod "${mode}" "${dst}" || true
-
-  # Restore previous traps (don't clobber caller's cleanup handlers)
-  if [[ -n "${old_trap_exit}" ]]; then
-    eval "${old_trap_exit}"
-  else
-    trap - EXIT
-  fi
-  if [[ -n "${old_trap_int}" ]]; then
-    eval "${old_trap_int}"
-  else
-    trap - INT
-  fi
-  if [[ -n "${old_trap_term}" ]]; then
-    eval "${old_trap_term}"
-  else
-    trap - TERM
-  fi
+  return 0
 }
 ```
 
@@ -219,8 +198,8 @@ io::atomic_write() {
 - ✅ **Same-partition operation**: Temp file in destination directory ensures atomic `mv`
 - ✅ **Unpredictable names**: `mktemp XXXXXX` prevents symlink attacks (CWE-59)
 - ✅ **Hidden prefix**: `.atomic-write.` avoids naming conflicts
-- ✅ **Automatic cleanup**: Trap ensures no temp file leaks
-- ✅ **Trap preservation**: Saves and restores caller's cleanup handlers
+- ✅ **Explicit error handling**: Cleanup on each failure path
+- ✅ **No trap interference**: Works correctly in pipelines and test frameworks
 - ✅ **Race condition防护**: Prevents TOCTOU attacks (CWE-362)
 
 **References**:
