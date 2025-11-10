@@ -42,6 +42,41 @@ build_shortids_pool() {
   printf '%s' "${pool}"
 }
 
+##
+# Verify TLS certificates exist for vision-reality
+#
+# Checks for required certificate files (fullchain.pem and privkey.pem)
+# in the specified directory.
+#
+# Arguments:
+#   $1 - Certificate directory path (string, required)
+#
+# Returns:
+#   0 - Both certificate files exist
+#   1 - One or both certificate files missing
+#
+# Example:
+#   verify_tls_certificates "/usr/local/etc/xray/certs"
+##
+verify_tls_certificates() {
+  local cert_dir="${1}"
+  local fullchain="${cert_dir}/fullchain.pem"
+  local privkey="${cert_dir}/privkey.pem"
+
+  if [[ ! -f "${fullchain}" ]]; then
+    core::log error "TLS certificate not found" "$(printf '{"file":"%s"}' "${fullchain}")"
+    return 1
+  fi
+
+  if [[ ! -f "${privkey}" ]]; then
+    core::log error "TLS private key not found" "$(printf '{"file":"%s"}' "${privkey}")"
+    return 1
+  fi
+
+  core::log debug "TLS certificates verified" "$(printf '{"cert_dir":"%s"}' "${cert_dir}")"
+  return 0
+}
+
 # Helper: Calculate config directory digest
 digest_confdir() {
   local confdir="${1}"
@@ -127,8 +162,8 @@ xray::render_vision_reality_inbounds() {
   core::log debug "vision-reality variables set" "$(printf '{"vision_port":"%s","reality_port":"%s","domain":"%s"}' \
     "${XRAY_VISION_PORT}" "${XRAY_REALITY_PORT}" "${XRAY_DOMAIN}")"
 
-  # Check for required TLS certificates
-  if [[ ! -f "${XRAY_CERT_DIR}/fullchain.pem" || ! -f "${XRAY_CERT_DIR}/privkey.pem" ]]; then
+  # Check for required TLS certificates (using extracted helper function)
+  if ! verify_tls_certificates "${XRAY_CERT_DIR}"; then
     core::log fatal "vision-reality requires TLS certificates" "$(printf '{"cert_dir":"%s","suggestion":"Use: --plugins cert-auto"}' \
       "${XRAY_CERT_DIR}")"
   fi

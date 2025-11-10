@@ -129,11 +129,15 @@ if [[ -z "${DOMAIN}" ]]; then
   exit 1
 fi
 
-# 动态查找域名证书（支持任意 ACME provider 目录结构，选择最新的）
-cert_file=$(find "${CADDY_CERT_BASE}" -maxdepth 4 -type f -name "${DOMAIN}.crt" \
+# 动态查找域名证书（限制深度为 3 层，覆盖所有 ACME providers）
+# Caddy 目录结构: certificates/<provider>/<domain>/<domain>.crt (最大深度 3 层)
+cert_file=$(find "${CADDY_CERT_BASE}" -maxdepth 3 -type f -name "${DOMAIN}.crt" \
   -printf '%T@ %p\n' 2> /dev/null | sort -rn | head -1 | cut -d' ' -f2-)
-key_file=$(find "${CADDY_CERT_BASE}" -maxdepth 4 -type f -name "${DOMAIN}.key" \
+key_file=$(find "${CADDY_CERT_BASE}" -maxdepth 3 -type f -name "${DOMAIN}.key" \
   -printf '%T@ %p\n' 2> /dev/null | sort -rn | head -1 | cut -d' ' -f2-)
+
+log debug "certificate search completed" "$(printf '{"base":"%s","maxdepth":3,"cert_found":"%s","key_found":"%s"}' \
+  "${CADDY_CERT_BASE}" "${cert_file:-none}" "${key_file:-none}")"
 
 if [[ ! -f "${cert_file}" ]]; then
   log error "certificate file not found for ${DOMAIN}"
