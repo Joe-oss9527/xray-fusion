@@ -49,9 +49,21 @@ io::atomic_write() {
   fi
 
   # Restore previous traps (don't clobber caller's cleanup handlers)
-  [[ -n "${old_trap_exit}" ]] && eval "${old_trap_exit}" || trap - EXIT
-  [[ -n "${old_trap_int}" ]] && eval "${old_trap_int}" || trap - INT
-  [[ -n "${old_trap_term}" ]] && eval "${old_trap_term}" || trap - TERM
+  if [[ -n "${old_trap_exit}" ]]; then
+    eval "${old_trap_exit}"
+  else
+    trap - EXIT
+  fi
+  if [[ -n "${old_trap_int}" ]]; then
+    eval "${old_trap_int}"
+  else
+    trap - INT
+  fi
+  if [[ -n "${old_trap_term}" ]]; then
+    eval "${old_trap_term}"
+  else
+    trap - TERM
+  fi
 }
 
 io::install_file() {
