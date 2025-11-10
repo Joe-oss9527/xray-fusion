@@ -3,6 +3,8 @@
 # This file provides centralized configuration management
 # Override via environment variables or command-line arguments
 
+# shellcheck disable=SC2034  # Variables used via indirect expansion in defaults::get()
+
 # === Topology Defaults ===
 readonly DEFAULT_TOPOLOGY="reality-only"
 

@@ -47,31 +47,31 @@ readonly ERR_DIR_CREATE_FAIL=53 # Cannot create directory
 errors::message() {
   local code="${1}"
   case "${code}" in
-    ${ERR_SUCCESS}) echo "Success" ;;
-    ${ERR_GENERAL}) echo "General failure" ;;
-    ${ERR_INVALID_ARG}) echo "Invalid argument" ;;
-    ${ERR_NOT_FOUND}) echo "Resource not found" ;;
-    ${ERR_PERMISSION}) echo "Permission denied" ;;
-    ${ERR_CONFIG}) echo "Configuration error" ;;
-    ${ERR_NETWORK}) echo "Network error" ;;
-    ${ERR_TIMEOUT}) echo "Operation timeout" ;;
-    ${ERR_HELP_REQUESTED}) echo "Help requested" ;;
-    ${ERR_INVALID_DOMAIN}) echo "Invalid domain" ;;
-    ${ERR_INVALID_PORT}) echo "Invalid port" ;;
-    ${ERR_INVALID_UUID}) echo "Invalid UUID" ;;
-    ${ERR_INVALID_SHORTID}) echo "Invalid shortId" ;;
-    ${ERR_INVALID_VERSION}) echo "Invalid version" ;;
-    ${ERR_INVALID_TOPOLOGY}) echo "Invalid topology" ;;
-    ${ERR_PLUGIN_NOT_FOUND}) echo "Plugin not found" ;;
-    ${ERR_PLUGIN_LOAD_FAIL}) echo "Plugin load failed" ;;
-    ${ERR_PLUGIN_HOOK_FAIL}) echo "Plugin hook failed" ;;
-    ${ERR_SERVICE_START_FAIL}) echo "Service start failed" ;;
-    ${ERR_SERVICE_STOP_FAIL}) echo "Service stop failed" ;;
-    ${ERR_SERVICE_NOT_FOUND}) echo "Service not found" ;;
-    ${ERR_FILE_NOT_FOUND}) echo "File not found" ;;
-    ${ERR_FILE_READ_FAIL}) echo "File read failed" ;;
-    ${ERR_FILE_WRITE_FAIL}) echo "File write failed" ;;
-    ${ERR_DIR_CREATE_FAIL}) echo "Directory creation failed" ;;
+    "${ERR_SUCCESS}") echo "Success" ;;
+    "${ERR_GENERAL}") echo "General failure" ;;
+    "${ERR_INVALID_ARG}") echo "Invalid argument" ;;
+    "${ERR_NOT_FOUND}") echo "Resource not found" ;;
+    "${ERR_PERMISSION}") echo "Permission denied" ;;
+    "${ERR_CONFIG}") echo "Configuration error" ;;
+    "${ERR_NETWORK}") echo "Network error" ;;
+    "${ERR_TIMEOUT}") echo "Operation timeout" ;;
+    "${ERR_HELP_REQUESTED}") echo "Help requested" ;;
+    "${ERR_INVALID_DOMAIN}") echo "Invalid domain" ;;
+    "${ERR_INVALID_PORT}") echo "Invalid port" ;;
+    "${ERR_INVALID_UUID}") echo "Invalid UUID" ;;
+    "${ERR_INVALID_SHORTID}") echo "Invalid shortId" ;;
+    "${ERR_INVALID_VERSION}") echo "Invalid version" ;;
+    "${ERR_INVALID_TOPOLOGY}") echo "Invalid topology" ;;
+    "${ERR_PLUGIN_NOT_FOUND}") echo "Plugin not found" ;;
+    "${ERR_PLUGIN_LOAD_FAIL}") echo "Plugin load failed" ;;
+    "${ERR_PLUGIN_HOOK_FAIL}") echo "Plugin hook failed" ;;
+    "${ERR_SERVICE_START_FAIL}") echo "Service start failed" ;;
+    "${ERR_SERVICE_STOP_FAIL}") echo "Service stop failed" ;;
+    "${ERR_SERVICE_NOT_FOUND}") echo "Service not found" ;;
+    "${ERR_FILE_NOT_FOUND}") echo "File not found" ;;
+    "${ERR_FILE_READ_FAIL}") echo "File read failed" ;;
+    "${ERR_FILE_WRITE_FAIL}") echo "File write failed" ;;
+    "${ERR_DIR_CREATE_FAIL}") echo "Directory creation failed" ;;
     *) echo "Unknown error (${code})" ;;
   esac
 }
