@@ -133,6 +133,42 @@
 
 ---
 
+### ADR-010: Phase 1 安全增强（2025-11-10）
+**问题**: Code review 发现三个高优先级安全/稳定性问题
+
+**决策**: 实施 Phase 1 安全修复：域名验证增强、shortId 生成统一、锁文件管理改进
+
+**实施**:
+1. **域名验证增强** (lib/validators.sh)
+   - 新增 RFC 3927 链路本地地址检测 (169.254.0.0/16)
+   - 新增 RFC 6761 特殊用途域名检测 (.test, .invalid)
+   - 新增 IPv6 私有地址检测 (::1, fc00::/7, fe80::/10)
+   - 新增 9 个单元测试
+
+2. **shortId 生成统一** (commands/install.sh)
+   - 使用可靠的工具链: xxd → od → openssl
+   - 修复 hexdump 格式字符串错误
+   - 保证所有方法生成 16 字符十六进制字符串
+
+3. **锁文件管理改进** (scripts/caddy-cert-sync.sh)
+   - 迁移锁文件位置: /var/lock → /var/lib/xray-fusion/locks/
+   - 使用 install(1) 原子创建（防止 TOCTOU - CWE-362）
+   - 处理混合 sudo/非sudo 运行场景（防止 CWE-283）
+
+**理由**:
+- 安全性：关闭已知验证漏洞（IPv6、保留域名）
+- 可靠性：统一 shortId 生成避免长度不一致
+- 稳定性：锁文件管理支持混合权限运行环境
+- 标准化：遵循 RFC 规范和 systemd 最佳实践
+
+**参考文档**:
+- RFC 6761: Special-Use Domain Names
+- RFC 4193: IPv6 Unique Local Addresses
+- RFC 3927: IPv4 Link-Local Addresses
+- Systemd best practices for lock files
+
+---
+
 ## 核心教训总结
 
 ### 1. 验证官方支持，不做假设

@@ -2,6 +2,28 @@
 
 轻量级 Xray 管理工具，专注于简单可靠的部署体验。
 
+[![Tests](https://github.com/Joe-oss9527/xray-fusion/actions/workflows/test.yml/badge.svg)](https://github.com/Joe-oss9527/xray-fusion/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+## 特性
+
+- ✅ **自动化部署**: 一键安装，开箱即用
+- ✅ **双拓扑支持**: Reality-only / Vision-Reality 双模式
+- ✅ **自动证书管理**: 集成 Caddy + Let's Encrypt
+- ✅ **插件系统**: 模块化扩展，按需启用
+- ✅ **全面测试**: 96个单元测试 + 集成测试，~80% 覆盖率
+- ✅ **安全加固**: RFC 合规验证，systemd 安全加固
+- ✅ **完善文档**: ShellDoc API 文档，故障排查指南
+
+## 文档
+
+- 📖 [Installation Guide](#快速开始) - 快速安装指南
+- 🔧 [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - 故障排查指南
+- 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) - 贡献指南
+- 📋 [CHANGELOG.md](CHANGELOG.md) - 版本变更历史
+- 🏗️ [AGENTS.md](AGENTS.md) - 开发规范和技术细节
+- 💡 [CLAUDE.md](CLAUDE.md) - 架构决策记录 (ADRs)
+
 ## 快速开始
 
 ### 一键安装
@@ -180,14 +202,13 @@ bats -t tests/unit/*.bats
 ```
 
 **测试覆盖率**:
-- ✅ lib/args.sh: 100% (参数验证)
-- ✅ lib/core.sh: ~85% (核心功能)
-- ✅ lib/plugins.sh: ~90% (插件系统)
-- ✅ modules/io.sh: ~95% (IO 操作)
-- ✅ services/xray/common.sh: 100% (路径管理)
-- **整体覆盖率**: ~80% (82 个测试用例)
-
-详见 [tests/README.md](tests/README.md)
+- ✅ lib/args.sh: 100% (21 tests - 参数验证)
+- ✅ lib/core.sh: ~85% (8 tests - 核心功能)
+- ✅ lib/plugins.sh: ~90% (26 tests - 插件系统)
+- ✅ lib/validators.sh: 100% (9 tests - RFC 合规验证)
+- ✅ modules/io.sh: ~95% (21 tests - IO 操作)
+- ✅ services/xray/common.sh: 100% (20 tests - 路径管理)
+- **整体覆盖率**: ~80% (96 个单元测试 + 6 个集成测试)
 
 ### CI/CD
 

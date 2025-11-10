@@ -2,6 +2,7 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 . "${HERE}/lib/core.sh"
+. "${HERE}/lib/errors.sh"
 . "${HERE}/lib/validators.sh"
 . "${HERE}/lib/plugins.sh"
 . "${HERE}/modules/io.sh"
@@ -39,6 +40,41 @@ build_shortids_pool() {
   [[ -n "${tertiary}" ]] && pool="${pool},\"${tertiary}\""
   pool="${pool}]"
   printf '%s' "${pool}"
+}
+
+##
+# Verify TLS certificates exist for vision-reality
+#
+# Checks for required certificate files (fullchain.pem and privkey.pem)
+# in the specified directory.
+#
+# Arguments:
+#   $1 - Certificate directory path (string, required)
+#
+# Returns:
+#   0 - Both certificate files exist
+#   1 - One or both certificate files missing
+#
+# Example:
+#   verify_tls_certificates "/usr/local/etc/xray/certs"
+##
+verify_tls_certificates() {
+  local cert_dir="${1}"
+  local fullchain="${cert_dir}/fullchain.pem"
+  local privkey="${cert_dir}/privkey.pem"
+
+  if [[ ! -f "${fullchain}" ]]; then
+    core::log error "TLS certificate not found" "$(printf '{"file":"%s"}' "${fullchain}")"
+    return 1
+  fi
+
+  if [[ ! -f "${privkey}" ]]; then
+    core::log error "TLS private key not found" "$(printf '{"file":"%s"}' "${privkey}")"
+    return 1
+  fi
+
+  core::log debug "TLS certificates verified" "$(printf '{"cert_dir":"%s"}' "${cert_dir}")"
+  return 0
 }
 
 # Helper: Calculate config directory digest
@@ -92,8 +128,7 @@ xray::render_reality_inbound() {
   : "${XRAY_SHORT_ID:?}" : "${XRAY_PRIVATE_KEY:?}"
 
   [[ -n "${XRAY_PRIVATE_KEY}" ]] || {
-    core::log error "XRAY_PRIVATE_KEY required"
-    exit 2
+    core::log fatal "XRAY_PRIVATE_KEY required"
   }
 
   # Prepare configuration values
@@ -127,16 +162,14 @@ xray::render_vision_reality_inbounds() {
   core::log debug "vision-reality variables set" "$(printf '{"vision_port":"%s","reality_port":"%s","domain":"%s"}' \
     "${XRAY_VISION_PORT}" "${XRAY_REALITY_PORT}" "${XRAY_DOMAIN}")"
 
-  # Check for required TLS certificates
-  if [[ ! -f "${XRAY_CERT_DIR}/fullchain.pem" || ! -f "${XRAY_CERT_DIR}/privkey.pem" ]]; then
-    core::log error "vision-reality requires TLS certificates" "$(printf '{"cert_dir":"%s","suggestion":"Use: --plugins cert-auto"}' \
+  # Check for required TLS certificates (using extracted helper function)
+  if ! verify_tls_certificates "${XRAY_CERT_DIR}"; then
+    core::log fatal "vision-reality requires TLS certificates" "$(printf '{"cert_dir":"%s","suggestion":"Use: --plugins cert-auto"}' \
       "${XRAY_CERT_DIR}")"
-    exit 2
   fi
 
   [[ -n "${XRAY_PRIVATE_KEY}" ]] || {
-    core::log error "XRAY_PRIVATE_KEY required"
-    exit 2
+    core::log fatal "XRAY_PRIVATE_KEY required"
   }
 
   # Prepare configuration values
@@ -211,8 +244,7 @@ render_release() {
       xray::render_vision_reality_inbounds "${release_dir}" "${sniff_bool}"
       ;;
     *)
-      core::log error "unknown topology" "$(printf '{"topology":"%s"}' "${topology}")"
-      exit 3
+      core::log fatal "unknown topology" "$(printf '{"topology":"%s"}' "${topology}")"
       ;;
   esac
 
@@ -233,9 +265,13 @@ deploy_release() {
   core::log debug "deploy_release started" "$(printf '{"release_dir":"%s"}' "${release_dir}")"
 
   # Security: Validate directory path to prevent injection attacks
-  if [[ ! "${release_dir}" =~ ^/[a-zA-Z0-9/_.-]+$ ]]; then
-    core::log error "invalid directory path" "$(printf '{"path":"%s"}' "${release_dir}")"
-    return 1
+  # Reject: parent references (..), consecutive slashes (//), invalid characters
+  # Note: Dots are allowed for hidden dirs (.config) and temp dirs (xrf.release.xxx)
+  if [[ ! "${release_dir}" =~ ^/([a-zA-Z0-9._-]+/)*[a-zA-Z0-9._-]+$ ]] \
+    || [[ "${release_dir}" == *".."* ]] \
+    || [[ "${release_dir}" == *"//"* ]]; then
+    core::log error "invalid directory path" "$(printf '{"path":"%s","reason":"path validation failed"}' "${release_dir//\"/\\\"}")"
+    return "${ERR_INVALID_ARG}"
   fi
 
   if [[ ! -d "${release_dir}" ]]; then
@@ -292,8 +328,7 @@ main() {
   case "${topology}" in
     "reality-only" | "vision-reality") ;;
     *)
-      core::log error "invalid topology" "$(printf '{"topology":"%s","valid_options":"reality-only,vision-reality"}' "${topology}")"
-      exit 1
+      core::log fatal "invalid topology" "$(printf '{"topology":"%s","valid_options":"reality-only,vision-reality"}' "${topology}")"
       ;;
   esac
   plugins::ensure_dirs

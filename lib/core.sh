@@ -3,6 +3,30 @@
 # NOTE: This file is sourced. Strict mode (set -euo pipefail) is set by core::init()
 #       which must be called by the main script.
 
+##
+# Initialize strict mode and parse global flags
+#
+# Sets up bash strict mode (set -euo pipefail -E) and parses
+# global flags like --json and --debug. Must be called at the
+# start of every main script.
+#
+# Arguments:
+#   $@ - Command-line arguments (optional)
+#
+# Globals:
+#   XRF_JSON - Set to "true" if --json flag present
+#   XRF_DEBUG - Set to "true" if --debug flag present
+#
+# Returns:
+#   0 - Always succeeds
+#
+# Side Effects:
+#   - Enables bash strict mode (set -euo pipefail -E)
+#   - Sets up ERR trap for error handling
+#
+# Example:
+#   core::init "${@}"
+##
 core::init() {
   set -euo pipefail -E
   export XRF_JSON="${XRF_JSON:-false}"
@@ -17,14 +41,75 @@ core::init() {
   trap 'core::error_handler "${?}" "${LINENO}" "${BASH_COMMAND}"' ERR
 }
 
+##
+# ERR trap handler for error logging
+#
+# Internal function called by ERR trap to log error details before exit.
+# Uses critical level to indicate severe error condition.
+#
+# Arguments:
+#   $1 - Return code (number, required)
+#   $2 - Line number (number, required)
+#   $3 - Failed command (string, required)
+#
+# Returns:
+#   Never returns (exits with return code from $1)
+#
+# Example:
+#   trap 'core::error_handler "${?}" "${LINENO}" "${BASH_COMMAND}"' ERR
+##
 core::error_handler() {
   local return_code="${1}" line_number="${2}" command="${3}"
-  core::log error "trap" "$(printf '{"rc":%d,"line":%d,"cmd":"%s"}' "${return_code}" "${line_number}" "${command//\"/\\\"}")"
+  # Use critical level for ERR trap (doesn't exit, trap will handle that)
+  core::log critical "ERR trap" "$(printf '{"rc":%d,"line":%d,"cmd":"%s"}' "${return_code}" "${line_number}" "${command//\"/\\\"}")"
   exit "${return_code}"
 }
 
+##
+# Generate ISO 8601 UTC timestamp
+#
+# Returns:
+#   ISO 8601 timestamp string (YYYY-MM-DDTHH:MM:SSZ)
+#
+# Example:
+#   ts="$(core::ts)"  # "2025-11-10T12:34:56Z"
+##
 core::ts() { date -u +'%Y-%m-%dT%H:%M:%SZ'; }
 
+##
+# Structured logging to stderr
+#
+# Logs messages in text or JSON format depending on XRF_JSON.
+# All output goes to stderr to avoid contaminating function
+# return values. Debug messages are filtered unless XRF_DEBUG=true.
+#
+# Supports log levels: debug, info, warn, error, critical, fatal
+# - fatal: Immediately exits with code 1 after logging
+# - critical: Logs severe error but does not exit
+# - error/warn/info/debug: Standard log levels
+#
+# Arguments:
+#   $1 - Log level (string, required) - debug|info|warn|error|critical|fatal
+#   $2 - Message (string, required)
+#   $3 - Context JSON (string, optional, default: "{}")
+#
+# Globals:
+#   XRF_JSON - If "true", output JSON format
+#   XRF_DEBUG - If "true", show debug messages
+#
+# Output:
+#   Log line to stderr (text or JSON format)
+#
+# Returns:
+#   0 - Success (debug/info/warn/error/critical)
+#   Exits 1 - If level is fatal
+#
+# Example:
+#   core::log info "Operation completed" '{"duration_ms":123}'
+#   core::log error "Failed to read file" "$(printf '{"file":"%s"}' "${path}")"
+#   core::log critical "Database corrupted" '{"db":"/var/lib/app/data.db"}'
+#   core::log fatal "Missing required configuration"  # Exits immediately
+##
 core::log() {
   local lvl="${1}"
   shift
@@ -37,14 +122,46 @@ core::log() {
     return 0
   fi
 
+  # Normalize fatal/critical to uppercase for visibility in text output
+  local display_lvl="${lvl}"
+  if [[ "${lvl}" == "fatal" || "${lvl}" == "critical" ]]; then
+    display_lvl="${lvl^^}" # Convert to uppercase
+  fi
+
   # All logs go to stderr to avoid contaminating function outputs
   if [[ "${XRF_JSON}" == "true" ]]; then
     printf '{"ts":"%s","level":"%s","msg":"%s","ctx":%s}\n' "$(core::ts)" "${lvl}" "${msg}" "${ctx}" >&2
   else
-    printf '[%s] %-5s %s %s\n' "$(core::ts)" "${lvl}" "${msg}" "${ctx}" >&2
+    printf '[%s] %-8s %s %s\n' "$(core::ts)" "${display_lvl}" "${msg}" "${ctx}" >&2
   fi
+
+  # Fatal errors exit immediately
+  if [[ "${lvl}" == "fatal" ]]; then
+    exit 1
+  fi
+
+  return 0
 }
 
+##
+# Retry command with exponential backoff
+#
+# Executes a command up to max_attempts times, with exponentially
+# increasing delays between attempts (1s, 4s, 9s, 16s, 25s, ...).
+# Formula: sleep(attempt^2)
+#
+# Arguments:
+#   $1 - Maximum attempts (number, optional, default: 3)
+#   $@ - Command and arguments to execute (required)
+#
+# Returns:
+#   0 - Command succeeded within max_attempts
+#   1 - All attempts failed
+#
+# Example:
+#   core::retry 5 curl -fsSL https://example.com/file
+#   core::retry wget -O /tmp/file https://example.com/file  # Uses default 3 attempts
+##
 core::retry() {
   local max_attempts="${1:-3}"
   shift
@@ -56,6 +173,32 @@ core::retry() {
   done
 }
 
+##
+# Execute command with exclusive file lock
+#
+# Acquires a file-based lock before executing the command,
+# ensuring mutual exclusion. Handles sudo/non-sudo mixed
+# scenarios by fixing ownership and permissions atomically.
+#
+# Arguments:
+#   $1 - Lock file path (string, required)
+#   $@ - Command and arguments to execute (required)
+#
+# Returns:
+#   0 - Command succeeded
+#   1 - Command failed
+#   2 - Missing command argument
+#
+# Security:
+#   - Uses install(1) for atomic file creation (prevents TOCTOU - CWE-362)
+#   - Fixes ownership to current user (handles sudo remnants - CWE-283)
+#   - Executes in subshell with fd 200 to release lock automatically
+#   - Ensures writable lock file for all legitimate users
+#
+# Example:
+#   core::with_flock "/var/lib/app/locks/deploy.lock" deploy_function arg1 arg2
+#   core::with_flock "$(state::lock)" configure_and_deploy
+##
 core::with_flock() {
   local lock="${1}"
   shift || true

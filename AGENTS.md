@@ -34,6 +34,90 @@
 - **Keep code clean**: No unnecessary backward compatibility; delete incomplete/deprecated code.
 - **Scriptable everything**: Ensure all operations are parameterized via scripts, avoid manual intervention.
 
+## Function Documentation Standard
+
+All public functions must include ShellDoc-style comments for maintainability and developer onboarding:
+
+```bash
+##
+# Brief one-line description of the function
+#
+# Detailed description (optional, multiple lines)
+# Explain what the function does, why it exists, and any important notes.
+#
+# Arguments:
+#   $1 - Parameter name (type, required/optional, description)
+#   $2 - Parameter name (type, required/optional, default: value)
+#
+# Input:
+#   Description of stdin input (if applicable)
+#
+# Output:
+#   Description of stdout output
+#
+# Globals:
+#   VARIABLE_NAME - Description of global variable used/modified
+#
+# Returns:
+#   0 - Success description
+#   1 - Error description
+#   N - Another error code description (reference lib/errors.sh)
+#
+# Security:
+#   Security considerations (CWE references, TOCTOU, etc.)
+#
+# Example:
+#   function_name arg1 arg2
+#   echo "data" | function_name arg1
+##
+function_name() {
+  # implementation
+}
+```
+
+**Documentation Requirements**:
+- All public functions in `lib/`, `modules/`, and `services/` must have documentation
+- Helper functions and internal functions should have brief inline comments
+- Security-sensitive functions must include Security section with CWE references
+- Functions with non-trivial return codes must document all possible return values
+- Complex algorithms should include examples
+
+**Example - Core logging function**:
+```bash
+##
+# Structured logging to stderr
+#
+# Logs messages in text or JSON format depending on XRF_JSON.
+# All output goes to stderr to avoid contaminating function
+# return values. Debug messages are filtered unless XRF_DEBUG=true.
+#
+# Arguments:
+#   $1 - Log level (string, required) - debug|info|warn|error
+#   $2 - Message (string, required)
+#   $3 - Context JSON (string, optional, default: "{}")
+#
+# Globals:
+#   XRF_JSON - If "true", output JSON format
+#   XRF_DEBUG - If "true", show debug messages
+#
+# Output:
+#   Log line to stderr (text or JSON format)
+#
+# Returns:
+#   0 - Always succeeds (or returns early for filtered debug)
+#
+# Example:
+#   core::log info "Operation completed" '{"duration_ms":123}'
+#   core::log error "Failed" "$(printf '{"file":"%s"}' "${path}")"
+##
+core::log() {
+  local lvl="${1}"; shift
+  local msg="${1}"; shift || true
+  local ctx="${1-{} }"
+  # ... implementation ...
+}
+```
+
 ## Shell Programming Best Practices
 
 ### Logging Standards
@@ -450,17 +534,49 @@ args::validate_topology "${2}"  # Not checking return value
 TOPOLOGY="${2}"
 ```
 
-### Domain Validation (RFC Compliant)
+### Domain Validation (RFC Compliant + Extended)
+
+**Updated**: 2025-11-10 - Phase 1 Security Enhancements
+
+The `validators::domain()` function now implements comprehensive validation:
+
 ```bash
-# ✅ Correct regex (prevent ..com, -.com)
+# ✅ RFC 1035 format validation
 [[ "${domain}" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$ ]]
 
-# Forbid internal domains
+# ✅ IPv4 Private addresses (RFC 1918 + RFC 3927)
 case "${domain}" in
-  localhost|*.local|127.*|10.*|172.1[6-9].*|172.2[0-9].*|172.3[0-1].*|192.168.*)
-    return 1 ;;
+  # Loopback and special
+  localhost|*.local|127.*|0.0.0.0) return 1 ;;
+
+  # RFC 1918 private networks
+  10.*|172.1[6-9].*|172.2[0-9].*|172.3[0-1].*|192.168.*) return 1 ;;
+
+  # RFC 3927 link-local addresses (NEW)
+  169.254.*) return 1 ;;
+
+  # RFC 6761 special-use domain names (NEW)
+  *.test|*.invalid) return 1 ;;
 esac
+
+# ✅ IPv6 Private addresses (NEW - RFC 4193, RFC 4291)
+# - ::1 (loopback)
+# - fc00::/7 and fd00::/8 (unique local addresses - RFC 4193)
+# - fe80::/10 (link-local - RFC 4291)
+if [[ "${domain}" =~ ^::1$ ]] || \
+   [[ "${domain}" =~ ^[fF][cCdD][0-9a-fA-F]{2}: ]] || \
+   [[ "${domain}" =~ ^[fF][eE]80: ]]; then
+  return 1
+fi
 ```
+
+**Rejected Domains**:
+- RFC 1918: `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`
+- RFC 3927: `169.254.0.0/16` (link-local)
+- RFC 6761: `.test`, `.invalid` (special-use TLDs)
+- IPv6 loopback: `::1`
+- IPv6 ULA: `fc00::/7`, `fd00::/8` (RFC 4193)
+- IPv6 link-local: `fe80::/10` (RFC 4291)
 
 ## Common Commands
 

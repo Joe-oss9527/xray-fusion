@@ -2,19 +2,100 @@
 # 原子同步 Caddy 证书到 Xray 目录
 set -euo pipefail
 
-# 全局锁保护（非阻塞）
-exec 200> /var/lock/caddy-cert-sync.lock
+# Detect script location (for sourcing defaults if running from repo)
+# When installed to /usr/local/bin, defaults.sh won't be available
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ "${SCRIPT_DIR}" == */scripts ]]; then
+  # Running from repo
+  HERE="$(dirname "${SCRIPT_DIR}")"
+else
+  # Running from /usr/local/bin or other location
+  HERE=""
+fi
+
+# Lock file management (atomic creation with install(1))
+# Uses /var/lib/xray-fusion/locks/ for persistent storage (not tmpfs)
+LOCK_FILE="/var/lib/xray-fusion/locks/caddy-cert-sync.lock"
+LOCK_DIR="$(dirname "${LOCK_FILE}")"
+
+# Create lock directory
+if ! test -d "${LOCK_DIR}"; then
+  if ! mkdir -p "${LOCK_DIR}" 2> /dev/null; then
+    if command -v sudo > /dev/null 2>&1; then
+      sudo mkdir -p "${LOCK_DIR}" || {
+        printf '[%s] %-5s [caddy-cert-sync] failed to create lock directory\n' \
+          "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "error" >&2
+        exit 1
+      }
+    else
+      printf '[%s] %-5s [caddy-cert-sync] cannot create lock directory (no sudo)\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "error" >&2
+      exit 1
+    fi
+  fi
+fi
+
+# Atomic lock file creation (prevents TOCTOU - CWE-362)
+if ! test -f "${LOCK_FILE}" 2> /dev/null; then
+  # Use install(1) for atomic creation with correct ownership
+  if ! install -m 0644 -o "$(id -u)" -g "$(id -g)" /dev/null "${LOCK_FILE}" 2> /dev/null; then
+    # Fallback to sudo
+    if command -v sudo > /dev/null 2>&1; then
+      sudo install -m 0644 -o "$(id -u)" -g "$(id -g)" /dev/null "${LOCK_FILE}" 2> /dev/null || {
+        printf '[%s] %-5s [caddy-cert-sync] failed to create lock file\n' \
+          "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "error" >&2
+        exit 1
+      }
+    else
+      # Last resort: create with touch (may have wrong ownership)
+      touch "${LOCK_FILE}" 2> /dev/null || {
+        printf '[%s] %-5s [caddy-cert-sync] cannot create lock file\n' \
+          "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "error" >&2
+        exit 1
+      }
+    fi
+  fi
+else
+  # Lock file exists, fix ownership (handles previous root runs - CWE-283)
+  if ! chown "$(id -u):$(id -g)" "${LOCK_FILE}" 2> /dev/null; then
+    if command -v sudo > /dev/null 2>&1; then
+      sudo chown "$(id -u):$(id -g)" "${LOCK_FILE}" 2> /dev/null || true
+    fi
+  fi
+  # Fix permissions
+  if ! chmod 0644 "${LOCK_FILE}" 2> /dev/null; then
+    if command -v sudo > /dev/null 2>&1; then
+      sudo chmod 0644 "${LOCK_FILE}" 2> /dev/null || true
+    fi
+  fi
+fi
+
+# Non-blocking lock acquisition
+exec 200>> "${LOCK_FILE}"
 if ! flock -n 200; then
-  # 在日志函数定义前无法使用，直接输出
-  printf '[%s] %-5s [caddy-cert-sync] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "info" "another sync process is running, skipping" >&2
+  printf '[%s] %-5s [caddy-cert-sync] another sync process is running, skipping\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "info" >&2
   exit 0
 fi
 
+# Try to source defaults (if available), otherwise use hardcoded fallbacks
+# This script can run standalone from /usr/local/bin or from repo
+if [[ -f "${HERE:-}/lib/defaults.sh" ]]; then
+  # shellcheck source=../lib/defaults.sh
+  . "${HERE}/lib/defaults.sh"
+  CADDY_CERT_BASE="${DEFAULT_CADDY_CERT_BASE}"
+  XRAY_CERT_DIR="${DEFAULT_XRAY_CERT_DIR}"
+  XRF_DEBUG="${XRF_DEBUG:-${DEFAULT_XRF_DEBUG}}"
+  XRF_JSON="${XRF_JSON:-${DEFAULT_XRF_JSON}}"
+else
+  # Fallback values (for standalone execution from /usr/local/bin)
+  CADDY_CERT_BASE="/root/.local/share/caddy/certificates"
+  XRAY_CERT_DIR="/usr/local/etc/xray/certs"
+  XRF_DEBUG="${XRF_DEBUG:-false}"
+  XRF_JSON="${XRF_JSON:-false}"
+fi
+
 DOMAIN="${1:-}"
-CADDY_CERT_BASE="/root/.local/share/caddy/certificates"
-XRAY_CERT_DIR="/usr/local/etc/xray/certs"
-XRF_DEBUG="${XRF_DEBUG:-false}"
-XRF_JSON="${XRF_JSON:-false}"
 
 # Embedded logging (compatible with core::log from lib/core.sh)
 log() {
@@ -48,11 +129,15 @@ if [[ -z "${DOMAIN}" ]]; then
   exit 1
 fi
 
-# 动态查找域名证书（支持任意 ACME provider 目录结构，选择最新的）
-cert_file=$(find "${CADDY_CERT_BASE}" -maxdepth 4 -type f -name "${DOMAIN}.crt" \
+# 动态查找域名证书（限制深度为 3 层，覆盖所有 ACME providers）
+# Caddy 目录结构: certificates/<provider>/<domain>/<domain>.crt (最大深度 3 层)
+cert_file=$(find "${CADDY_CERT_BASE}" -maxdepth 3 -type f -name "${DOMAIN}.crt" \
   -printf '%T@ %p\n' 2> /dev/null | sort -rn | head -1 | cut -d' ' -f2-)
-key_file=$(find "${CADDY_CERT_BASE}" -maxdepth 4 -type f -name "${DOMAIN}.key" \
+key_file=$(find "${CADDY_CERT_BASE}" -maxdepth 3 -type f -name "${DOMAIN}.key" \
   -printf '%T@ %p\n' 2> /dev/null | sort -rn | head -1 | cut -d' ' -f2-)
+
+log debug "certificate search completed" "$(printf '{"base":"%s","maxdepth":3,"cert_found":"%s","key_found":"%s"}' \
+  "${CADDY_CERT_BASE}" "${cert_file:-none}" "${key_file:-none}")"
 
 if [[ ! -f "${cert_file}" ]]; then
   log error "certificate file not found for ${DOMAIN}"
