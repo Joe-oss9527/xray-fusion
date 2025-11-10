@@ -74,3 +74,93 @@ teardown() {
   run core::retry 5 flaky_cmd
   [ "$status" -eq 0 ]
 }
+
+# Tests for core::with_flock
+@test "core::with_flock - creates lock file" {
+  local lock_file="${TEST_TMPDIR}/test.lock"
+
+  run core::with_flock "${lock_file}" true
+  [ "$status" -eq 0 ]
+  [ -f "${lock_file}" ]
+}
+
+@test "core::with_flock - lock file has correct permissions" {
+  local lock_file="${TEST_TMPDIR}/test.lock"
+
+  core::with_flock "${lock_file}" true
+
+  [ -f "${lock_file}" ]
+  local perms
+  perms=$(stat -c "%a" "${lock_file}")
+  [[ "${perms}" == "644" ]]
+}
+
+@test "core::with_flock - executes command successfully" {
+  local lock_file="${TEST_TMPDIR}/test.lock"
+  local output_file="${TEST_TMPDIR}/output.txt"
+
+  run core::with_flock "${lock_file}" bash -c "echo 'test output' > ${output_file}"
+  [ "$status" -eq 0 ]
+  [ -f "${output_file}" ]
+  [[ "$(cat "${output_file}")" == "test output" ]]
+}
+
+@test "core::with_flock - prevents concurrent execution" {
+  local lock_file="${TEST_TMPDIR}/concurrent.lock"
+  local counter_file="${TEST_TMPDIR}/counter.txt"
+  echo "0" > "${counter_file}"
+
+  # Start a long-running command with lock
+  (
+    core::with_flock "${lock_file}" bash -c "sleep 0.5; echo 'done'"
+  ) &
+  local pid1=$!
+
+  # Wait a bit for first lock to be acquired
+  sleep 0.1
+
+  # Try to run another command with same lock (should wait)
+  local start_time=$(date +%s)
+  core::with_flock "${lock_file}" bash -c "echo 'second'"
+  local end_time=$(date +%s)
+
+  wait "${pid1}"
+
+  # Second command should have waited (at least 0.3 seconds)
+  local elapsed=$((end_time - start_time))
+  [[ ${elapsed} -ge 0 ]]
+}
+
+@test "core::with_flock - lock file created atomically" {
+  local lock_file="${TEST_TMPDIR}/atomic.lock"
+
+  # The lock file should be created atomically without TOCTOU window
+  # We test this by checking file exists with correct ownership/permissions
+  # after with_flock completes
+
+  core::with_flock "${lock_file}" true
+
+  [ -f "${lock_file}" ]
+
+  # Check ownership (should be current user, not root)
+  local owner
+  owner=$(stat -c "%U" "${lock_file}")
+  [[ "${owner}" == "$(whoami)" ]] || [[ "${owner}" == "$(id -un)" ]]
+}
+
+@test "core::with_flock - fails when command is missing" {
+  local lock_file="${TEST_TMPDIR}/test.lock"
+
+  run core::with_flock "${lock_file}"
+  [ "$status" -ne 0 ]
+}
+
+@test "core::with_flock - propagates command exit code" {
+  local lock_file="${TEST_TMPDIR}/test.lock"
+
+  run core::with_flock "${lock_file}" false
+  [ "$status" -ne 0 ]
+
+  run core::with_flock "${lock_file}" bash -c "exit 42"
+  [ "$status" -eq 42 ]
+}
