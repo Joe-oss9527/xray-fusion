@@ -34,6 +34,90 @@
 - **Keep code clean**: No unnecessary backward compatibility; delete incomplete/deprecated code.
 - **Scriptable everything**: Ensure all operations are parameterized via scripts, avoid manual intervention.
 
+## Function Documentation Standard
+
+All public functions must include ShellDoc-style comments for maintainability and developer onboarding:
+
+```bash
+##
+# Brief one-line description of the function
+#
+# Detailed description (optional, multiple lines)
+# Explain what the function does, why it exists, and any important notes.
+#
+# Arguments:
+#   $1 - Parameter name (type, required/optional, description)
+#   $2 - Parameter name (type, required/optional, default: value)
+#
+# Input:
+#   Description of stdin input (if applicable)
+#
+# Output:
+#   Description of stdout output
+#
+# Globals:
+#   VARIABLE_NAME - Description of global variable used/modified
+#
+# Returns:
+#   0 - Success description
+#   1 - Error description
+#   N - Another error code description (reference lib/errors.sh)
+#
+# Security:
+#   Security considerations (CWE references, TOCTOU, etc.)
+#
+# Example:
+#   function_name arg1 arg2
+#   echo "data" | function_name arg1
+##
+function_name() {
+  # implementation
+}
+```
+
+**Documentation Requirements**:
+- All public functions in `lib/`, `modules/`, and `services/` must have documentation
+- Helper functions and internal functions should have brief inline comments
+- Security-sensitive functions must include Security section with CWE references
+- Functions with non-trivial return codes must document all possible return values
+- Complex algorithms should include examples
+
+**Example - Core logging function**:
+```bash
+##
+# Structured logging to stderr
+#
+# Logs messages in text or JSON format depending on XRF_JSON.
+# All output goes to stderr to avoid contaminating function
+# return values. Debug messages are filtered unless XRF_DEBUG=true.
+#
+# Arguments:
+#   $1 - Log level (string, required) - debug|info|warn|error
+#   $2 - Message (string, required)
+#   $3 - Context JSON (string, optional, default: "{}")
+#
+# Globals:
+#   XRF_JSON - If "true", output JSON format
+#   XRF_DEBUG - If "true", show debug messages
+#
+# Output:
+#   Log line to stderr (text or JSON format)
+#
+# Returns:
+#   0 - Always succeeds (or returns early for filtered debug)
+#
+# Example:
+#   core::log info "Operation completed" '{"duration_ms":123}'
+#   core::log error "Failed" "$(printf '{"file":"%s"}' "${path}")"
+##
+core::log() {
+  local lvl="${1}"; shift
+  local msg="${1}"; shift || true
+  local ctx="${1-{} }"
+  # ... implementation ...
+}
+```
+
 ## Shell Programming Best Practices
 
 ### Logging Standards

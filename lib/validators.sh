@@ -7,13 +7,38 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=lib/core.sh
 . "${HERE}/lib/core.sh"
 
-# Domain validation (RFC 1035 compliant)
-# Validates:
-# - RFC compliant format (alphanumeric + hyphens)
-# - Total length <= 253 characters (DNS limit)
-# - Each label <= 63 characters
-# - No leading/trailing hyphens in labels
-# - Rejects internal/private domains
+##
+# Validate domain name (RFC 1035 compliant)
+#
+# Validates domain names according to DNS specifications and rejects
+# internal/private addresses. Enforces RFC 1035, RFC 1918, RFC 3927,
+# RFC 4193, RFC 4291, and RFC 6761 compliance.
+#
+# Arguments:
+#   $1 - Domain name (string, required)
+#
+# Returns:
+#   0 - Valid public domain name
+#   1 - Invalid domain (empty, malformed, private, or special-use)
+#
+# Security:
+#   - Rejects RFC 1918 private networks (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)
+#   - Rejects RFC 3927 link-local addresses (169.254.0.0/16)
+#   - Rejects RFC 6761 special-use TLDs (.test, .invalid)
+#   - Rejects IPv6 private addresses (::1, fc00::/7, fe80::/10)
+#   - Prevents use of localhost and .local domains
+#
+# Validation Rules:
+#   - Total length <= 253 characters (DNS limit)
+#   - Each label <= 63 characters
+#   - Labels must start/end with alphanumeric (no leading/trailing hyphens)
+#   - Only alphanumeric characters and hyphens allowed
+#
+# Example:
+#   validators::domain "example.com"      # Valid
+#   validators::domain "192.168.1.1"     # Invalid (private)
+#   validators::domain "test.invalid"    # Invalid (RFC 6761)
+##
 validators::domain() {
   local domain="${1:-}"
 
@@ -89,8 +114,24 @@ validators::domain() {
   return 0
 }
 
-# Port validation
-# Validates port number is in range 1-65535
+##
+# Validate TCP/UDP port number
+#
+# Validates port number is numeric and within valid range.
+#
+# Arguments:
+#   $1 - Port number (string/number, required)
+#
+# Returns:
+#   0 - Valid port number (1-65535)
+#   1 - Invalid port (empty, non-numeric, or out of range)
+#
+# Example:
+#   validators::port "443"     # Valid
+#   validators::port "0"       # Invalid (< 1)
+#   validators::port "65536"   # Invalid (> 65535)
+#   validators::port "abc"     # Invalid (non-numeric)
+##
 validators::port() {
   local port="${1:-}"
 
@@ -115,8 +156,23 @@ validators::port() {
   return 0
 }
 
-# UUID validation (UUIDv4 format)
-# Format: 8-4-4-4-12 hexadecimal digits
+##
+# Validate UUID (UUIDv4 format)
+#
+# Validates UUID conforms to standard format: 8-4-4-4-12 hexadecimal digits.
+#
+# Arguments:
+#   $1 - UUID string (string, required)
+#
+# Returns:
+#   0 - Valid UUID format
+#   1 - Invalid UUID (empty or malformed)
+#
+# Example:
+#   validators::uuid "550e8400-e29b-41d4-a716-446655440000"  # Valid
+#   validators::uuid "invalid-uuid"                           # Invalid
+#   validators::uuid "550e8400e29b41d4a716446655440000"       # Invalid (no hyphens)
+##
 validators::uuid() {
   local uuid="${1:-}"
 
@@ -135,12 +191,31 @@ validators::uuid() {
   return 0
 }
 
-# shortId validation (Xray Reality protocol)
-# Requirements:
-# - Hexadecimal characters only
-# - Even length (2, 4, 6, 8, 10, 12, 14, 16)
-# - Maximum 16 characters
-# - Empty string is valid (part of shortIds pool)
+##
+# Validate shortId for Xray Reality protocol
+#
+# Validates shortId conforms to Xray Reality protocol requirements.
+# Empty strings are valid as they are part of the shortIds pool.
+#
+# Arguments:
+#   $1 - shortId string (string, optional - empty is valid)
+#
+# Returns:
+#   0 - Valid shortId (empty or valid hexadecimal)
+#   1 - Invalid shortId (odd length, > 16 chars, or non-hex)
+#
+# Validation Rules:
+#   - Empty string is valid (part of shortIds pool)
+#   - Hexadecimal characters only (0-9, a-f, A-F)
+#   - Even length required (2, 4, 6, 8, 10, 12, 14, 16)
+#   - Maximum 16 characters
+#
+# Example:
+#   validators::shortid ""              # Valid (empty)
+#   validators::shortid "a1b2c3d4"      # Valid (8 chars, hex, even)
+#   validators::shortid "abc"           # Invalid (odd length)
+#   validators::shortid "xyz"           # Invalid (non-hex)
+##
 validators::shortid() {
   local sid="${1:-}"
 
@@ -170,8 +245,30 @@ validators::shortid() {
   return 0
 }
 
-# Version validation
-# Accepts: 'latest' or semantic version 'vX.Y.Z' or 'X.Y.Z'
+##
+# Validate version string
+#
+# Validates version conforms to semantic versioning or 'latest' keyword.
+#
+# Arguments:
+#   $1 - Version string (string, required)
+#
+# Returns:
+#   0 - Valid version ('latest' or semantic version)
+#   1 - Invalid version (empty or malformed)
+#
+# Accepted Formats:
+#   - 'latest' (special keyword)
+#   - 'vX.Y.Z' (semantic version with 'v' prefix)
+#   - 'X.Y.Z' (semantic version without prefix)
+#
+# Example:
+#   validators::version "latest"    # Valid
+#   validators::version "v1.8.7"    # Valid
+#   validators::version "1.8.7"     # Valid
+#   validators::version "v1.8"      # Invalid (incomplete)
+#   validators::version "abc"       # Invalid
+##
 validators::version() {
   local version="${1:-}"
 
