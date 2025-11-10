@@ -97,6 +97,52 @@ cleanup() {
 trap cleanup EXIT INT TERM HUP
 ```
 
+### Preserving Caller Traps
+
+**Critical**: When installing temporary traps in a function, always save and restore the caller's trap handlers. Unconditionally clearing traps destroys outer cleanup logic and causes resource leaks.
+
+```bash
+# ❌ Wrong: Clobbers caller's cleanup handlers
+function_with_trap() {
+  local tmp="$(mktemp)"
+  trap 'rm -f "${tmp}"' EXIT INT TERM
+  # ... operations ...
+  trap - EXIT INT TERM  # Bug: removes caller's cleanup!
+}
+
+# Caller's trap is permanently lost:
+cleanup() { rm -rf "${TEMP_DIR}"; }
+trap cleanup EXIT
+function_with_trap "/file"  # cleanup never runs → resource leak
+
+# ✅ Correct: Preserve and restore caller's traps
+function_with_trap() {
+  local tmp="$(mktemp)"
+
+  # Save existing traps
+  local old_trap_exit="$(trap -p EXIT)"
+  local old_trap_int="$(trap -p INT)"
+  local old_trap_term="$(trap -p TERM)"
+
+  # Install temporary trap
+  trap 'rm -f "${tmp}" 2>/dev/null || true' EXIT INT TERM
+
+  # ... operations ...
+
+  # Restore previous traps (don't clobber caller's cleanup)
+  [[ -n "${old_trap_exit}" ]] && eval "${old_trap_exit}" || trap - EXIT
+  [[ -n "${old_trap_int}" ]] && eval "${old_trap_int}" || trap - INT
+  [[ -n "${old_trap_term}" ]] && eval "${old_trap_term}" || trap - TERM
+}
+```
+
+**Why this matters**:
+- Functions should not have invisible side effects on caller's environment
+- Cleanup handlers are critical for resource management
+- Preserving traps maintains function encapsulation
+
+**Reference**: See `modules/io.sh::atomic_write()` for production implementation
+
 ### Variable Pollution Defense
 ```bash
 # ❌ Wrong: Directly sourcing external files may pollute variables
@@ -126,15 +172,22 @@ io::atomic_write() {
   # Use hidden prefix + XXXXXX for unpredictability
   tmp="$(mktemp -p "${dstdir}" .atomic-write.XXXXXX.tmp)" || return 1
 
-  # Cleanup on error/interrupt
+  # Save existing traps to restore later
+  local old_trap_exit="$(trap -p EXIT)"
+  local old_trap_int="$(trap -p INT)"
+  local old_trap_term="$(trap -p TERM)"
+
+  # Install temporary cleanup trap
   trap 'rm -f "${tmp}" 2>/dev/null || true' EXIT INT TERM
 
   cat > "${tmp}"
   mv -f "${tmp}" "${dst}"  # Atomic on same filesystem
   chmod "${mode}" "${dst}" || true
 
-  # Clear trap on success
-  trap - EXIT INT TERM
+  # Restore previous traps (don't clobber caller's cleanup handlers)
+  [[ -n "${old_trap_exit}" ]] && eval "${old_trap_exit}" || trap - EXIT
+  [[ -n "${old_trap_int}" ]] && eval "${old_trap_int}" || trap - INT
+  [[ -n "${old_trap_term}" ]] && eval "${old_trap_term}" || trap - TERM
 }
 ```
 
@@ -143,11 +196,59 @@ io::atomic_write() {
 - ✅ **Unpredictable names**: `mktemp XXXXXX` prevents symlink attacks (CWE-59)
 - ✅ **Hidden prefix**: `.atomic-write.` avoids naming conflicts
 - ✅ **Automatic cleanup**: Trap ensures no temp file leaks
+- ✅ **Trap preservation**: Saves and restores caller's cleanup handlers
 - ✅ **Race condition防护**: Prevents TOCTOU attacks (CWE-362)
 
 **References**:
 - [CWE-362: Concurrent Execution using Shared Resource](https://cwe.mitre.org/data/definitions/362.html)
 - [CWE-59: Improper Link Resolution](https://cwe.mitre.org/data/definitions/59.html)
+
+### Permission and Ownership Edge Cases
+
+When dealing with files that may be created by different users (root vs non-root), always ensure **both permissions AND ownership** are correct. This is especially critical for lock files and shared resources.
+
+**⚠️ Common Scenario:**
+```bash
+# Run 1: sudo xrf install → creates lock file owned by root:root 0644
+# Run 2: xrf status (non-root user) → lock file still root-owned
+# Result: exec 200>> "${lock}" fails (cannot append to root-owned file)
+```
+
+**❌ Wrong: Only fixing permissions**
+```bash
+if test -f "${lock}"; then
+  # File exists from previous run
+  chmod 0644 "${lock}" 2>/dev/null || true
+  # Bug: still owned by root, non-root user cannot write
+fi
+
+exec 200>> "${lock}"  # Fails if file is root-owned
+```
+
+**✅ Correct: Fix both ownership and permissions**
+```bash
+if test -f "${lock}"; then
+  # File exists, may be root-owned from previous sudo run
+  # Fix ownership first
+  if ! chown "$(id -u):$(id -g)" "${lock}" 2>/dev/null; then
+    sudo chown "$(id -u):$(id -g)" "${lock}" 2>/dev/null || true
+  fi
+  # Then fix permissions
+  if ! chmod 0644 "${lock}" 2>/dev/null; then
+    sudo chmod 0644 "${lock}" 2>/dev/null || true
+  fi
+fi
+
+exec 200>> "${lock}"  # Now succeeds for all users
+```
+
+**Why this matters**:
+- Mixed sudo/non-sudo usage is common in deployment tools
+- Lock files must be writable by all legitimate users
+- Permissions alone don't guarantee write access (ownership matters)
+- Fixes CWE-283 (Unverified Ownership)
+
+**Reference**: See `lib/core.sh::with_flock()` for production implementation
 
 ## Testing Guidelines
 - Test framework: bats-core with 96 unit tests across 5 test files.
