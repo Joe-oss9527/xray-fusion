@@ -21,10 +21,19 @@ io::writable() { test -w "${1}" 2> /dev/null; }
 
 io::atomic_write() {
   local dst="${1}" mode="${2:-0644}"
-  local tmp
-  tmp="$(mktemp "${dst}.XXXX.tmp")" || return 1
+  local dstdir tmp
+  dstdir="$(dirname "${dst}")"
+
+  # Security: Create temp file in destination directory (same partition for atomic mv)
+  # Use hidden prefix to prevent conflicts and mktemp XXXXXX for unpredictability
+  tmp="$(mktemp -p "${dstdir}" .atomic-write.XXXXXX.tmp)" || return 1
+
+  # Ensure temp file is cleaned up on error
+  trap 'rm -f "${tmp}" 2>/dev/null || true' EXIT INT TERM
+
   cat > "${tmp}"
-  if io::writable "$(dirname "${dst}")"; then
+
+  if io::writable "${dstdir}"; then
     mv -f "${tmp}" "${dst}"
     chmod "${mode}" "${dst}" || true
   else
@@ -32,6 +41,9 @@ io::atomic_write() {
     sudo mv -f "${tmp}" "${dst}"
     sudo chmod "${mode}" "${dst}" || true
   fi
+
+  # Clear trap on success
+  trap - EXIT INT TERM
 }
 
 io::install_file() {
