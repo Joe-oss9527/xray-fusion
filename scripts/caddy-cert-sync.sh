@@ -2,11 +2,68 @@
 # 原子同步 Caddy 证书到 Xray 目录
 set -euo pipefail
 
-# 全局锁保护（非阻塞）
-exec 200> /var/lock/caddy-cert-sync.lock
+# Lock file management (atomic creation with install(1))
+# Uses /var/lib/xray-fusion/locks/ for persistent storage (not tmpfs)
+LOCK_FILE="/var/lib/xray-fusion/locks/caddy-cert-sync.lock"
+LOCK_DIR="$(dirname "${LOCK_FILE}")"
+
+# Create lock directory
+if ! test -d "${LOCK_DIR}"; then
+  if ! mkdir -p "${LOCK_DIR}" 2>/dev/null; then
+    if command -v sudo >/dev/null 2>&1; then
+      sudo mkdir -p "${LOCK_DIR}" || {
+        printf '[%s] %-5s [caddy-cert-sync] failed to create lock directory\n' \
+          "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "error" >&2
+        exit 1
+      }
+    else
+      printf '[%s] %-5s [caddy-cert-sync] cannot create lock directory (no sudo)\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "error" >&2
+      exit 1
+    fi
+  fi
+fi
+
+# Atomic lock file creation (prevents TOCTOU - CWE-362)
+if ! test -f "${LOCK_FILE}" 2>/dev/null; then
+  # Use install(1) for atomic creation with correct ownership
+  if ! install -m 0644 -o "$(id -u)" -g "$(id -g)" /dev/null "${LOCK_FILE}" 2>/dev/null; then
+    # Fallback to sudo
+    if command -v sudo >/dev/null 2>&1; then
+      sudo install -m 0644 -o "$(id -u)" -g "$(id -g)" /dev/null "${LOCK_FILE}" 2>/dev/null || {
+        printf '[%s] %-5s [caddy-cert-sync] failed to create lock file\n' \
+          "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "error" >&2
+        exit 1
+      }
+    else
+      # Last resort: create with touch (may have wrong ownership)
+      touch "${LOCK_FILE}" 2>/dev/null || {
+        printf '[%s] %-5s [caddy-cert-sync] cannot create lock file\n' \
+          "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "error" >&2
+        exit 1
+      }
+    fi
+  fi
+else
+  # Lock file exists, fix ownership (handles previous root runs - CWE-283)
+  if ! chown "$(id -u):$(id -g)" "${LOCK_FILE}" 2>/dev/null; then
+    if command -v sudo >/dev/null 2>&1; then
+      sudo chown "$(id -u):$(id -g)" "${LOCK_FILE}" 2>/dev/null || true
+    fi
+  fi
+  # Fix permissions
+  if ! chmod 0644 "${LOCK_FILE}" 2>/dev/null; then
+    if command -v sudo >/dev/null 2>&1; then
+      sudo chmod 0644 "${LOCK_FILE}" 2>/dev/null || true
+    fi
+  fi
+fi
+
+# Non-blocking lock acquisition
+exec 200>> "${LOCK_FILE}"
 if ! flock -n 200; then
-  # 在日志函数定义前无法使用，直接输出
-  printf '[%s] %-5s [caddy-cert-sync] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "info" "another sync process is running, skipping" >&2
+  printf '[%s] %-5s [caddy-cert-sync] another sync process is running, skipping\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "info" >&2
   exit 0
 fi
 

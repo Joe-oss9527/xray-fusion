@@ -450,17 +450,49 @@ args::validate_topology "${2}"  # Not checking return value
 TOPOLOGY="${2}"
 ```
 
-### Domain Validation (RFC Compliant)
+### Domain Validation (RFC Compliant + Extended)
+
+**Updated**: 2025-11-10 - Phase 1 Security Enhancements
+
+The `validators::domain()` function now implements comprehensive validation:
+
 ```bash
-# ✅ Correct regex (prevent ..com, -.com)
+# ✅ RFC 1035 format validation
 [[ "${domain}" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$ ]]
 
-# Forbid internal domains
+# ✅ IPv4 Private addresses (RFC 1918 + RFC 3927)
 case "${domain}" in
-  localhost|*.local|127.*|10.*|172.1[6-9].*|172.2[0-9].*|172.3[0-1].*|192.168.*)
-    return 1 ;;
+  # Loopback and special
+  localhost|*.local|127.*|0.0.0.0) return 1 ;;
+
+  # RFC 1918 private networks
+  10.*|172.1[6-9].*|172.2[0-9].*|172.3[0-1].*|192.168.*) return 1 ;;
+
+  # RFC 3927 link-local addresses (NEW)
+  169.254.*) return 1 ;;
+
+  # RFC 6761 special-use domain names (NEW)
+  *.test|*.invalid) return 1 ;;
 esac
+
+# ✅ IPv6 Private addresses (NEW - RFC 4193, RFC 4291)
+# - ::1 (loopback)
+# - fc00::/7 and fd00::/8 (unique local addresses - RFC 4193)
+# - fe80::/10 (link-local - RFC 4291)
+if [[ "${domain}" =~ ^::1$ ]] || \
+   [[ "${domain}" =~ ^[fF][cCdD][0-9a-fA-F]{2}: ]] || \
+   [[ "${domain}" =~ ^[fF][eE]80: ]]; then
+  return 1
+fi
 ```
+
+**Rejected Domains**:
+- RFC 1918: `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`
+- RFC 3927: `169.254.0.0/16` (link-local)
+- RFC 6761: `.test`, `.invalid` (special-use TLDs)
+- IPv6 loopback: `::1`
+- IPv6 ULA: `fc00::/7`, `fd00::/8` (RFC 4193)
+- IPv6 link-local: `fe80::/10` (RFC 4291)
 
 ## Common Commands
 

@@ -80,12 +80,39 @@ main() {
     XRAY_REALITY_DEST="${XRAY_REALITY_DEST}:443"
   fi
   # Generate shortIds pool (3-5 shortIds for multi-client scenarios)
+  # Uses reliable hex conversion: xxd (simple) → od (POSIX) → openssl (fallback)
+
   # Primary shortId (backward compatible)
-  [[ -n "${XRAY_SHORT_ID:-}" ]] || XRAY_SHORT_ID="$(openssl rand -hex 8 2> /dev/null || head -c 8 /dev/urandom | hexdump -e '16/1 \"%02x\"')"
+  if [[ -z "${XRAY_SHORT_ID:-}" ]]; then
+    if command -v xxd > /dev/null 2>&1; then
+      XRAY_SHORT_ID="$(head -c 8 /dev/urandom | xxd -p -c 16)"
+    elif command -v od > /dev/null 2>&1; then
+      XRAY_SHORT_ID="$(head -c 8 /dev/urandom | od -An -tx1 -v | tr -d ' \n')"
+    else
+      XRAY_SHORT_ID="$(openssl rand -hex 8)"
+    fi
+  fi
 
   # Additional shortIds for future client differentiation (optional)
-  [[ -n "${XRAY_SHORT_ID_2:-}" ]] || XRAY_SHORT_ID_2="$(openssl rand -hex 8 2> /dev/null || head -c 8 /dev/urandom | hexdump -e '16/1 \"%02x\"')"
-  [[ -n "${XRAY_SHORT_ID_3:-}" ]] || XRAY_SHORT_ID_3="$(openssl rand -hex 8 2> /dev/null || head -c 8 /dev/urandom | hexdump -e '16/1 \"%02x\"')"
+  if [[ -z "${XRAY_SHORT_ID_2:-}" ]]; then
+    if command -v xxd > /dev/null 2>&1; then
+      XRAY_SHORT_ID_2="$(head -c 8 /dev/urandom | xxd -p -c 16)"
+    elif command -v od > /dev/null 2>&1; then
+      XRAY_SHORT_ID_2="$(head -c 8 /dev/urandom | od -An -tx1 -v | tr -d ' \n')"
+    else
+      XRAY_SHORT_ID_2="$(openssl rand -hex 8)"
+    fi
+  fi
+
+  if [[ -z "${XRAY_SHORT_ID_3:-}" ]]; then
+    if command -v xxd > /dev/null 2>&1; then
+      XRAY_SHORT_ID_3="$(head -c 8 /dev/urandom | xxd -p -c 16)"
+    elif command -v od > /dev/null 2>&1; then
+      XRAY_SHORT_ID_3="$(head -c 8 /dev/urandom | od -An -tx1 -v | tr -d ' \n')"
+    else
+      XRAY_SHORT_ID_3="$(openssl rand -hex 8)"
+    fi
+  fi
 
   # Validate all generated shortIds (hex format, even length, max 16 chars)
   # Use shared validator from lib/validators.sh

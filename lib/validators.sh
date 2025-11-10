@@ -49,13 +49,42 @@ validators::domain() {
     return 1
   fi
 
-  # Reject internal/private domains
+  # Reject internal/private domains and special-use domain names
+
+  # IPv4 private addresses (RFC 1918 + RFC 3927)
   case "${domain}" in
-    localhost | *.local | 127.* | 10.* | 172.1[6-9].* | 172.2[0-9].* | 172.3[0-1].* | 192.168.*)
-      core::log debug "domain validation failed: internal domain" "$(printf '{"domain":"%s"}' "${domain}")"
+    # Loopback and special addresses
+    localhost | *.local | 127.* | 0.0.0.0)
+      core::log debug "domain validation failed: loopback/local" "$(printf '{"domain":"%s"}' "${domain}")"
+      return 1
+      ;;
+    # RFC 1918 private networks
+    10.* | 172.1[6-9].* | 172.2[0-9].* | 172.3[0-1].* | 192.168.*)
+      core::log debug "domain validation failed: RFC 1918 private network" "$(printf '{"domain":"%s"}' "${domain}")"
+      return 1
+      ;;
+    # RFC 3927 link-local addresses
+    169.254.*)
+      core::log debug "domain validation failed: RFC 3927 link-local" "$(printf '{"domain":"%s"}' "${domain}")"
+      return 1
+      ;;
+    # RFC 6761 special-use domain names
+    *.test | *.invalid)
+      core::log debug "domain validation failed: RFC 6761 special-use TLD" "$(printf '{"domain":"%s","rfc":"6761"}' "${domain}")"
       return 1
       ;;
   esac
+
+  # IPv6 private address detection (RFC 4193, RFC 4291)
+  # - ::1 (loopback)
+  # - fc00::/7 and fd00::/8 (unique local addresses - RFC 4193)
+  # - fe80::/10 (link-local - RFC 4291)
+  if [[ "${domain}" =~ ^::1$ ]] || \
+     [[ "${domain}" =~ ^[fF][cCdD][0-9a-fA-F]{2}: ]] || \
+     [[ "${domain}" =~ ^[fF][eE]80: ]]; then
+    core::log debug "domain validation failed: IPv6 private/link-local" "$(printf '{"domain":"%s"}' "${domain}")"
+    return 1
+  fi
 
   return 0
 }

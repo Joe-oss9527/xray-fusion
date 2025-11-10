@@ -80,6 +80,65 @@ teardown() {
   [ "$status" -ne 0 ]
 }
 
+# RFC 3927 link-local addresses
+@test "validators::domain - rejects 169.254.0.0/16 link-local (RFC 3927)" {
+  run validators::domain "169.254.10.1"
+  [ "$status" -ne 0 ]
+
+  run validators::domain "169.254.0.1"
+  [ "$status" -ne 0 ]
+
+  run validators::domain "169.254.255.254"
+  [ "$status" -ne 0 ]
+}
+
+# RFC 6761 special-use TLDs
+@test "validators::domain - rejects .test TLD (RFC 6761)" {
+  run validators::domain "example.test"
+  [ "$status" -ne 0 ]
+
+  run validators::domain "my-app.test"
+  [ "$status" -ne 0 ]
+}
+
+@test "validators::domain - rejects .invalid TLD (RFC 6761)" {
+  run validators::domain "foo.invalid"
+  [ "$status" -ne 0 ]
+
+  run validators::domain "test.invalid"
+  [ "$status" -ne 0 ]
+}
+
+# IPv6 loopback
+@test "validators::domain - rejects ::1 (IPv6 loopback)" {
+  run validators::domain "::1"
+  [ "$status" -ne 0 ]
+}
+
+# IPv6 unique local addresses (RFC 4193)
+@test "validators::domain - rejects fc00::/7 (IPv6 ULA - RFC 4193)" {
+  run validators::domain "fc00:1234:5678::1"
+  [ "$status" -ne 0 ]
+
+  run validators::domain "fd00:abcd:ef01::1"
+  [ "$status" -ne 0 ]
+
+  run validators::domain "fcff:ffff:ffff::1"
+  [ "$status" -ne 0 ]
+
+  run validators::domain "fdff:ffff:ffff::1"
+  [ "$status" -ne 0 ]
+}
+
+# IPv6 link-local (RFC 4291)
+@test "validators::domain - rejects fe80::/10 (IPv6 link-local - RFC 4291)" {
+  run validators::domain "fe80::1"
+  [ "$status" -ne 0 ]
+
+  run validators::domain "fe80:0000:0000:0000:0202:b3ff:fe1e:8329"
+  [ "$status" -ne 0 ]
+}
+
 @test "validators::domain - rejects domain starting with hyphen" {
   run validators::domain "-invalid.com"
   [ "$status" -ne 0 ]
