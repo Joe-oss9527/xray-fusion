@@ -35,6 +35,45 @@ if ! test -d "${LOCK_DIR}"; then
   fi
 fi
 
+##
+# Standalone version of core::ensure_lock_writable (compatible with lib/core.sh)
+#
+# Ensures lock file is writable by current user. Lightweight version for
+# standalone scripts that cannot source lib/core.sh.
+#
+# Arguments:
+#   $1 - Lock file path
+#
+# Returns:
+#   0 - Success, 1 - Failed to make writable
+##
+ensure_lock_writable() {
+  local lock="${1}"
+
+  # File doesn't exist, nothing to fix
+  [[ ! -f "${lock}" ]] && return 0
+
+  # Fix ownership (may be root-owned from previous sudo run)
+  if ! chown "$(id -u):$(id -g)" "${lock}" 2>/dev/null; then
+    if command -v sudo > /dev/null 2>&1; then
+      sudo chown "$(id -u):$(id -g)" "${lock}" 2>/dev/null || return 1
+    else
+      return 1
+    fi
+  fi
+
+  # Fix permissions
+  if ! chmod 0644 "${lock}" 2>/dev/null; then
+    if command -v sudo > /dev/null 2>&1; then
+      sudo chmod 0644 "${lock}" 2>/dev/null || return 1
+    else
+      return 1
+    fi
+  fi
+
+  return 0
+}
+
 # Atomic lock file creation (prevents TOCTOU - CWE-362)
 if ! test -f "${LOCK_FILE}" 2> /dev/null; then
   # Use install(1) for atomic creation with correct ownership
@@ -42,33 +81,27 @@ if ! test -f "${LOCK_FILE}" 2> /dev/null; then
     # Fallback to sudo
     if command -v sudo > /dev/null 2>&1; then
       sudo install -m 0644 -o "$(id -u)" -g "$(id -g)" /dev/null "${LOCK_FILE}" 2> /dev/null || {
-        printf '[%s] %-5s [caddy-cert-sync] failed to create lock file\n' \
+        printf '[%s] %-8s [caddy-cert-sync] failed to create lock file\n' \
           "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "error" >&2
         exit 1
       }
     else
       # Last resort: create with touch (may have wrong ownership)
       touch "${LOCK_FILE}" 2> /dev/null || {
-        printf '[%s] %-5s [caddy-cert-sync] cannot create lock file\n' \
+        printf '[%s] %-8s [caddy-cert-sync] cannot create lock file\n' \
           "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "error" >&2
         exit 1
       }
     fi
   fi
-else
-  # Lock file exists, fix ownership (handles previous root runs - CWE-283)
-  if ! chown "$(id -u):$(id -g)" "${LOCK_FILE}" 2> /dev/null; then
-    if command -v sudo > /dev/null 2>&1; then
-      sudo chown "$(id -u):$(id -g)" "${LOCK_FILE}" 2> /dev/null || true
-    fi
-  fi
-  # Fix permissions
-  if ! chmod 0644 "${LOCK_FILE}" 2> /dev/null; then
-    if command -v sudo > /dev/null 2>&1; then
-      sudo chmod 0644 "${LOCK_FILE}" 2> /dev/null || true
-    fi
-  fi
 fi
+
+# Ensure lock file is writable (handles previous root runs - CWE-283)
+ensure_lock_writable "${LOCK_FILE}" || {
+  printf '[%s] %-8s [caddy-cert-sync] lock file not writable\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "error" >&2
+  exit 1
+}
 
 # Non-blocking lock acquisition
 exec 200>> "${LOCK_FILE}"
