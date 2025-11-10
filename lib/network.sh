@@ -121,14 +121,14 @@ network::download_with_retry() {
     local output="${2}"
 
     # Try curl first
-    if command -v curl >/dev/null 2>&1; then
-      curl -fsSL --connect-timeout 10 --max-time 300 "${url}" -o "${output}" 2>/dev/null
+    if command -v curl > /dev/null 2>&1; then
+      curl -fsSL --connect-timeout 10 --max-time 300 "${url}" -o "${output}" 2> /dev/null
       return $?
     fi
 
     # Fallback to wget
-    if command -v wget >/dev/null 2>&1; then
-      wget -q --timeout=10 "${url}" -O "${output}" 2>/dev/null
+    if command -v wget > /dev/null 2>&1; then
+      wget -q --timeout=10 "${url}" -O "${output}" 2> /dev/null
       return $?
     fi
 
