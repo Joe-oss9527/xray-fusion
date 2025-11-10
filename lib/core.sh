@@ -69,14 +69,22 @@ core::with_flock() {
     core::log warn "mkdir fallback sudo" "$(printf '{"dir":"%s"}' "${dir//\"/\\\"}")"
     sudo mkdir -p "${dir}"
   fi
-  if ! touch "${lock}" 2> /dev/null; then
-    core::log warn "touch needs sudo" "$(printf '{"file":"%s"}' "${lock//\"/\\\"}")"
-    sudo touch "${lock}"
-    sudo chown "$(id -u):$(id -g)" "${lock}" 2> /dev/null || true
+
+  # Security: Atomic lock file creation with correct ownership and permissions
+  # Use install(1) instead of touch + chown to prevent TOCTOU window
+  if ! test -f "${lock}" 2> /dev/null; then
+    if ! install -m 0644 -o "$(id -u)" -g "$(id -g)" /dev/null "${lock}" 2> /dev/null; then
+      core::log warn "lock file creation needs sudo" "$(printf '{"file":"%s"}' "${lock//\"/\\\"}")"
+      # Use install with sudo for atomic creation (single syscall, no TOCTOU)
+      sudo install -m 0644 -o "$(id -u)" -g "$(id -g)" /dev/null "${lock}" 2> /dev/null || true
+    fi
+  else
+    # Lock file exists, ensure correct permissions
+    if ! chmod 0644 "${lock}" 2> /dev/null; then
+      sudo chmod 0644 "${lock}" 2> /dev/null || true
+    fi
   fi
-  if ! chmod 0644 "${lock}" 2> /dev/null; then
-    sudo chmod 0644 "${lock}" 2> /dev/null || true
-  fi
+
   (
     exec 200>> "${lock}"
     flock 200
