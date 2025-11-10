@@ -34,6 +34,38 @@
 - **Keep code clean**: No unnecessary backward compatibility; delete incomplete/deprecated code.
 - **Scriptable everything**: Ensure all operations are parameterized via scripts, avoid manual intervention.
 
+## Security Best Practices
+
+### Download Integrity Verification
+**Critical**: When downloading and executing code (e.g., install scripts), ALWAYS verify integrity BEFORE executing any downloaded code.
+
+```bash
+# ❌ Wrong: Verify AFTER sourcing (CWE-494)
+source "${downloaded_dir}/lib/core.sh"  # Malicious code executes here!
+git rev-parse HEAD  # Verification is now meaningless
+
+# ✅ Correct: Verify BEFORE sourcing
+actual_commit=$(git -C "${downloaded_dir}" rev-parse HEAD)
+[[ "${actual_commit}" == "${expected_commit}" ]] || exit 1
+source "${downloaded_dir}/lib/core.sh"  # Safe to execute
+```
+
+**Key Principles**:
+- Verification logic must be self-contained (use only trusted system tools)
+- Never `source` or execute downloaded code before integrity checks pass
+- Fail fast on verification errors (call `error_exit` or equivalent)
+- Support optional cryptographic verification (commit hash, GPG signatures)
+
+**Attack Scenarios Prevented**:
+- Man-in-the-middle (MITM) attacks
+- Malicious mirror repositories
+- DNS hijacking
+
+**Reference**:
+- CWE-494: Download of Code Without Integrity Check
+- See `install.sh:595-634` for reference implementation
+- Security test: `tests/security/test-download-verification.sh`
+
 ## Function Documentation Standard
 
 All public functions must include ShellDoc-style comments for maintainability and developer onboarding:
