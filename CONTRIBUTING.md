@@ -1,0 +1,543 @@
+# Contributing to xray-fusion
+
+Thank you for your interest in contributing to xray-fusion! This document provides guidelines and instructions for contributing.
+
+## Table of Contents
+
+- [Code of Conduct](#code-of-conduct)
+- [Getting Started](#getting-started)
+- [Development Workflow](#development-workflow)
+- [Coding Standards](#coding-standards)
+- [Testing](#testing)
+- [Commit Guidelines](#commit-guidelines)
+- [Pull Request Process](#pull-request-process)
+- [Documentation](#documentation)
+
+---
+
+## Code of Conduct
+
+- **Be respectful**: Treat all contributors with respect
+- **Be constructive**: Provide helpful feedback
+- **Be professional**: Keep discussions focused on technical merits
+- **Be patient**: Remember that everyone is learning
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+- Bash 4.0+ (for strict mode and modern features)
+- ShellCheck for static analysis
+- shfmt for code formatting
+- bats-core for testing
+
+### Development Environment Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/Joe-oss9527/xray-fusion.git
+cd xray-fusion
+
+# Install development dependencies
+# Ubuntu/Debian
+sudo apt-get install shellcheck bats jq
+
+# macOS
+brew install shellcheck shfmt bats-core jq
+
+# Verify tools are installed
+shellcheck --version
+shfmt -version
+bats --version
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+make test
+
+# Run only unit tests
+make test-unit
+
+# Run only integration tests
+make test-integration
+
+# Run linting
+make lint
+
+# Format code
+make fmt
+```
+
+---
+
+## Development Workflow
+
+### 1. Create a Feature Branch
+
+```bash
+# Always work on a feature branch, never on main
+git checkout -b feature/your-feature-name
+# or
+git checkout -b fix/bug-description
+```
+
+### 2. Make Changes
+
+Follow the [Coding Standards](#coding-standards) section below.
+
+### 3. Test Your Changes
+
+```bash
+# Lint your changes
+make lint
+
+# Format your code
+make fmt
+
+# Run tests
+make test
+
+# Test manually in safe sandbox
+XRF_PREFIX=$PWD/tmp/prefix XRF_ETC=$PWD/tmp/etc bin/xrf install --topology reality-only
+```
+
+### 4. Commit Your Changes
+
+Follow the [Commit Guidelines](#commit-guidelines) section below.
+
+### 5. Push and Create PR
+
+```bash
+git push origin feature/your-feature-name
+```
+
+Then create a pull request on GitHub.
+
+---
+
+## Coding Standards
+
+### File Organization
+
+- `bin/`: CLI entrypoints
+- `commands/`: High-level workflows (install, status, uninstall)
+- `lib/`: Core utilities (core.sh, args.sh, validators.sh, plugins.sh, errors.sh, defaults.sh)
+- `modules/`: Reusable helpers (io.sh, state.sh, fw/*, user/*, web/*)
+- `services/xray/`: Xray-specific logic
+- `plugins/available/`: Built-in plugins
+- `scripts/`: Standalone scripts (e.g., caddy-cert-sync.sh)
+- `tests/`: Unit and integration tests
+
+### Bash Style Guide
+
+#### File Header
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+. "${HERE}/lib/core.sh"
+```
+
+#### Naming Conventions
+
+- **Functions**: `namespace::function` (e.g., `core::log`, `io::atomic_write`)
+- **Variables**: lowercase `local` variables, UPPER_SNAKE for exported/env vars
+- **Files**: kebab-case (e.g., `cert-sync.sh`)
+- **Plugin IDs**: `[a-zA-Z0-9_-]+`
+
+#### Indentation
+
+- **2 spaces** (no tabs)
+- Use shfmt to format: `shfmt -i 2 -ci -sr -bn -ln=bash -w file.sh`
+
+#### Function Documentation
+
+All public functions must include ShellDoc-style comments:
+
+```bash
+##
+# Brief one-line description
+#
+# Detailed description explaining what the function does,
+# why it exists, and any important notes.
+#
+# Arguments:
+#   $1 - Parameter name (type, required/optional, description)
+#   $2 - Parameter name (type, optional, default: value)
+#
+# Returns:
+#   0 - Success description
+#   1 - Error description
+#
+# Security:
+#   Security considerations (CWE references if applicable)
+#
+# Example:
+#   function_name arg1 arg2
+##
+function_name() {
+  local arg1="${1}"
+  local arg2="${2:-default}"
+  # implementation
+}
+```
+
+**See**: AGENTS.md "Function Documentation Standard" section
+
+#### Logging Standards
+
+```bash
+# Always use core::log, never echo for logs
+core::log info "Operation completed" '{"duration_ms":123}'
+core::log error "Failed to read file" "$(printf '{"file":"%s"}' "${path}")"
+
+# All logs go to stderr
+core::log debug "Debug information" "$(printf '{"var":"%s"}' "${value}")"
+```
+
+**Log Levels**:
+- `debug`: Debug information (filtered unless `XRF_DEBUG=true`)
+- `info`: Informational messages
+- `warn`: Warnings
+- `error`: Recoverable errors
+- `critical`: Severe errors (logged, execution continues)
+- `fatal`: Unrecoverable errors (logs and exits immediately)
+
+#### Error Handling
+
+```bash
+# Use standardized error codes from lib/errors.sh
+. "${HERE}/lib/errors.sh"
+
+# Return error codes
+validators::domain "${domain}" || return "${ERR_INVALID_DOMAIN}"
+
+# Exit with error code
+errors::exit "${ERR_CONFIG}" "XRAY_PRIVATE_KEY required"
+
+# Or use fatal log level (exits immediately)
+core::log fatal "XRAY_PRIVATE_KEY required"
+```
+
+#### Avoid Common Pitfalls
+
+**✅ Good**:
+```bash
+# Use full path in HERE document
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Atomic file operations
+echo "content" | io::atomic_write "/etc/app/config" "0640"
+
+# Proper variable quoting
+local file_path="${1}"
+[[ -f "${file_path}" ]] && echo "File exists"
+
+# Logging to stderr
+core::log error "Failed" "$(printf '{"code":%d}' "${code}")"
+```
+
+**❌ Bad**:
+```bash
+# Using echo for logs
+echo "[ERROR] Failed"  # Pollutes stdout, inconsistent format
+
+# Using traps in utility functions
+io::atomic_write() {
+  local tmp="$(mktemp)"
+  trap 'rm -f "${tmp}"' EXIT  # Breaks in pipelines!
+  # ...
+}
+
+# Direct temp file creation without security
+tmp="/tmp/predictable-name"  # CWE-59: Predictable name
+
+# Missing error handling
+cp file1 file2  # What if it fails?
+```
+
+**See**: AGENTS.md "Shell Programming Best Practices" section
+
+---
+
+## Testing
+
+### Unit Tests
+
+Unit tests use bats-core framework.
+
+#### Creating Unit Tests
+
+```bash
+# tests/unit/test_mymodule.bats
+#!/usr/bin/env bats
+# Unit tests for mymodule
+
+load ../test_helper
+
+setup() {
+  setup_test_env
+  source "${HERE}/lib/mymodule.sh"
+}
+
+@test "mymodule::function - success case" {
+  run mymodule::function "valid_input"
+  [ "$status" -eq 0 ]
+  [ "$output" = "expected_output" ]
+}
+
+@test "mymodule::function - handles empty input" {
+  run mymodule::function ""
+  [ "$status" -eq 1 ]
+}
+```
+
+#### Running Unit Tests
+
+```bash
+# Run all unit tests
+make test-unit
+
+# Run specific test file
+bats tests/unit/test_validators.bats
+
+# Run with verbose output
+bats -t tests/unit/test_validators.bats
+```
+
+### Integration Tests
+
+Integration tests verify end-to-end workflows.
+
+```bash
+# tests/integration/test_workflow.bats
+#!/usr/bin/env bats
+# Integration test for workflow
+
+load test_helper
+
+setup() {
+  setup_integration_env
+}
+
+teardown() {
+  cleanup_integration_env
+}
+
+@test "workflow - completes successfully" {
+  run bin/xrf install --topology reality-only
+  [ "$status" -eq 0 ]
+  # Verify results...
+}
+```
+
+### Test Coverage
+
+Current test coverage: ~80%
+
+**Covered modules**:
+- lib/args.sh (21 tests)
+- lib/core.sh (8 tests)
+- lib/plugins.sh (26 tests)
+- lib/validators.sh (9 tests - Phase 1 enhancements)
+- modules/io.sh (21 tests)
+- services/xray/common.sh (20 tests)
+
+**See**: tests/unit/ directory for examples
+
+---
+
+## Commit Guidelines
+
+### Commit Message Format
+
+Follow Conventional Commits specification:
+
+```
+<type>(<scope>): <subject>
+
+<body>
+
+<footer>
+```
+
+#### Types
+
+- `feat`: New feature
+- `fix`: Bug fix
+- `docs`: Documentation changes
+- `style`: Code style changes (formatting, etc.)
+- `refactor`: Code refactoring
+- `perf`: Performance improvements
+- `test`: Adding or updating tests
+- `chore`: Build process or auxiliary tool changes
+
+#### Examples
+
+```bash
+# Good commit messages
+git commit -m "feat(validators): add IPv6 private address validation"
+git commit -m "fix(cert-sync): handle mixed sudo/non-sudo scenarios"
+git commit -m "docs: add ShellDoc documentation to core functions"
+git commit -m "perf: optimize certificate find from maxdepth 4 to 3"
+
+# With body
+git commit -m "feat: add fatal/critical log levels
+
+- fatal: logs and exits immediately (exit 1)
+- critical: logs severe error but continues execution
+- Converted 5 error+exit patterns to fatal level
+
+Related to: Phase 3 Task 3.2"
+```
+
+### Commit Best Practices
+
+- **Atomic commits**: One logical change per commit
+- **Clear subject**: Describe what and why, not how
+- **Imperative mood**: "Add feature" not "Added feature"
+- **Reference issues**: Include issue numbers when applicable
+- **Keep subject under 72 characters**
+
+---
+
+## Pull Request Process
+
+### Before Submitting
+
+1. **Ensure tests pass**: `make test`
+2. **Lint your code**: `make lint`
+3. **Format your code**: `make fmt`
+4. **Update documentation**: AGENTS.md, CLAUDE.md if adding ADRs
+5. **Add tests**: For new features or bug fixes
+
+### PR Template
+
+```markdown
+## Summary
+Brief description of changes and motivation.
+
+## Changes
+- List of specific changes
+- Use bullet points
+
+## Testing
+How to validate these changes:
+\`\`\`bash
+# Specific commands to test
+bin/xrf install --topology reality-only
+\`\`\`
+
+## Screenshots/Logs
+(If applicable)
+
+## Checklist
+- [ ] Tests added/updated
+- [ ] Documentation updated
+- [ ] Lint passes (`make lint`)
+- [ ] Format applied (`make fmt`)
+- [ ] Tests pass (`make test`)
+- [ ] Changes are backward compatible (or migration path provided)
+
+## Related Issues
+Closes #123
+```
+
+### PR Review Process
+
+1. **Automated checks**: CI/CD must pass (lint, format, test)
+2. **Code review**: At least one maintainer approval required
+3. **Testing**: Reviewer should test changes if possible
+4. **Documentation**: Verify docs are updated appropriately
+
+### Addressing Review Comments
+
+```bash
+# Make requested changes
+git add .
+git commit -m "address review comments: fix validation logic"
+
+# Push updated branch
+git push origin feature/your-feature-name
+```
+
+---
+
+## Documentation
+
+### What to Document
+
+#### Code Documentation
+- All public functions (ShellDoc-style)
+- Complex algorithms
+- Security considerations (with CWE references)
+- Non-obvious behavior
+
+#### Project Documentation
+- **AGENTS.md**: Development guidelines, coding standards
+- **CLAUDE.md**: Architecture Decision Records (ADRs)
+- **README.md**: User-facing documentation
+- **CHANGELOG.md**: Version history (Keep a Changelog format)
+- **TROUBLESHOOTING.md**: Common issues and solutions
+
+### Architecture Decision Records (ADRs)
+
+When making significant architectural decisions, document them in CLAUDE.md:
+
+```markdown
+### ADR-XXX: Decision Title (YYYY-MM-DD)
+
+**Problem**: Brief description of the problem
+
+**Decision**: What was decided
+
+**Rationale**:
+- Why this decision was made
+- What alternatives were considered
+- What trade-offs were accepted
+
+**Impact**:
+- How this affects the system
+- What changes are required
+
+**References**:
+- Links to RFCs, docs, GitHub discussions
+```
+
+**See**: CLAUDE.md for examples (ADR-001 through ADR-010)
+
+---
+
+## Development Principles
+
+**From AGENTS.md**:
+
+- **System debugging, no guessing**: Use logs to analyze issues based on actual phenomena
+- **Use project logging framework**: Consistently use `core::log`, never `echo` for logs
+- **Consult official docs first**: Avoid deprecated or outdated implementations
+- **Keep code clean**: No unnecessary backward compatibility; delete incomplete/deprecated code
+- **Scriptable everything**: Ensure all operations are parameterized via scripts
+
+---
+
+## Questions or Help?
+
+- **Documentation**: Check AGENTS.md, CLAUDE.md, README.md
+- **Issues**: Search existing issues before creating new ones
+- **Discussions**: Use GitHub Discussions for questions
+- **IRC/Chat**: (If applicable)
+
+---
+
+## License
+
+By contributing to xray-fusion, you agree that your contributions will be licensed under the same license as the project.
+
+---
+
+Thank you for contributing to xray-fusion! 🎉
