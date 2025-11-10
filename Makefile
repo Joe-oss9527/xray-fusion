@@ -11,7 +11,7 @@ fmt:
 	@shfmt -i 2 -ci -sr -bn -ln=bash -w $(SRC)
 	@echo "Formatted with shfmt"
 
-test: test-unit
+test: test-unit test-integration
 
 test-unit:
 	@command -v bats >/dev/null 2>&1 || { echo "bats not found; see https://github.com/bats-core/bats-core"; exit 2; }
@@ -19,13 +19,13 @@ test-unit:
 
 test-integration:
 	@command -v bats >/dev/null 2>&1 || { echo "bats not found; see https://github.com/bats-core/bats-core"; exit 2; }
-	@bats tests/integration/*.bats 2>/dev/null || echo "No integration tests yet"
+	@bats tests/integration/*.bats
 
 help:
 	@echo "Available targets:"
 	@echo "  lint             - Run ShellCheck on all shell scripts"
 	@echo "  fmt              - Format all shell scripts with shfmt"
-	@echo "  test             - Run all tests (currently: unit tests only)"
+	@echo "  test             - Run all tests (unit + integration)"
 	@echo "  test-unit        - Run unit tests"
 	@echo "  test-integration - Run integration tests"
 	@echo "  help             - Show this help message"

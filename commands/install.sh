@@ -2,6 +2,7 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 . "${HERE}/lib/core.sh"
+. "${HERE}/lib/defaults.sh"
 . "${HERE}/lib/args.sh"
 . "${HERE}/lib/plugins.sh"
 . "${HERE}/modules/state.sh"
@@ -65,14 +66,14 @@ main() {
 
   if [[ "${TOPOLOGY}" == "vision-reality" ]]; then
     core::log debug "configuring vision-reality topology" "$(printf '{"XRAY_DOMAIN":"%s"}' "${XRAY_DOMAIN:-unset}")"
-    : "${XRAY_VISION_PORT:=8443}" : "${XRAY_REALITY_PORT:=443}" : "${XRAY_CERT_DIR:=/usr/local/etc/xray/certs}" : "${XRAY_FALLBACK_PORT:=8080}"
+    : "${XRAY_VISION_PORT:=${DEFAULT_XRAY_VISION_PORT}}" : "${XRAY_REALITY_PORT:=${DEFAULT_XRAY_REALITY_PORT}}" : "${XRAY_CERT_DIR:=${DEFAULT_XRAY_CERT_DIR}}" : "${XRAY_FALLBACK_PORT:=${DEFAULT_XRAY_FALLBACK_PORT}}"
     if [[ -z "${XRAY_UUID_VISION:-}" ]]; then XRAY_UUID_VISION="$("$(xray::bin)" uuid 2> /dev/null || uuidgen)"; fi
     if [[ -z "${XRAY_UUID_REALITY:-}" ]]; then XRAY_UUID_REALITY="$("$(xray::bin)" uuid 2> /dev/null || uuidgen)"; fi
   else
-    : "${XRAY_PORT:=443}"
+    : "${XRAY_PORT:=${DEFAULT_XRAY_PORT}}"
     if [[ -z "${XRAY_UUID:-}" ]]; then XRAY_UUID="$("$(xray::bin)" uuid 2> /dev/null || uuidgen)"; fi
   fi
-  : "${XRAY_SNI:=www.microsoft.com}"
+  : "${XRAY_SNI:=${DEFAULT_XRAY_SNI}}"
   if [[ -z "${XRAY_REALITY_DEST:-}" ]]; then
     XRAY_REALITY_DEST="${XRAY_SNI%%,*}"
   fi

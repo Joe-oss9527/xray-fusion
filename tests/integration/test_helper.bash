@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Integration test helper
+
+# Setup isolated test environment
+setup_integration_env() {
+  export TEST_ROOT="${BATS_TEST_TMPDIR}/xrf-integration"
+  export XRF_PREFIX="${TEST_ROOT}/prefix"
+  export XRF_ETC="${TEST_ROOT}/etc"
+  export XRF_VAR="${TEST_ROOT}/var"
+
+  mkdir -p "${XRF_PREFIX}" "${XRF_ETC}" "${XRF_VAR}"
+
+  # Mock systemctl for testing
+  export PATH="${TEST_ROOT}/bin:${PATH}"
+  mkdir -p "${TEST_ROOT}/bin"
+  cat > "${TEST_ROOT}/bin/systemctl" << 'EOF'
+#!/usr/bin/env bash
+echo "systemctl $*" >> "${XRF_VAR}/systemctl.log"
+exit 0
+EOF
+  chmod +x "${TEST_ROOT}/bin/systemctl"
+}
+
+cleanup_integration_env() {
+  rm -rf "${TEST_ROOT}" 2>/dev/null || true
+}

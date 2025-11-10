@@ -2,6 +2,17 @@
 # 原子同步 Caddy 证书到 Xray 目录
 set -euo pipefail
 
+# Detect script location (for sourcing defaults if running from repo)
+# When installed to /usr/local/bin, defaults.sh won't be available
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ "${SCRIPT_DIR}" == */scripts ]]; then
+  # Running from repo
+  HERE="$(dirname "${SCRIPT_DIR}")"
+else
+  # Running from /usr/local/bin or other location
+  HERE=""
+fi
+
 # Lock file management (atomic creation with install(1))
 # Uses /var/lib/xray-fusion/locks/ for persistent storage (not tmpfs)
 LOCK_FILE="/var/lib/xray-fusion/locks/caddy-cert-sync.lock"
@@ -67,11 +78,24 @@ if ! flock -n 200; then
   exit 0
 fi
 
+# Try to source defaults (if available), otherwise use hardcoded fallbacks
+# This script can run standalone from /usr/local/bin or from repo
+if [[ -f "${HERE:-}/lib/defaults.sh" ]]; then
+  # shellcheck source=../lib/defaults.sh
+  . "${HERE}/lib/defaults.sh"
+  CADDY_CERT_BASE="${DEFAULT_CADDY_CERT_BASE}"
+  XRAY_CERT_DIR="${DEFAULT_XRAY_CERT_DIR}"
+  XRF_DEBUG="${XRF_DEBUG:-${DEFAULT_XRF_DEBUG}}"
+  XRF_JSON="${XRF_JSON:-${DEFAULT_XRF_JSON}}"
+else
+  # Fallback values (for standalone execution from /usr/local/bin)
+  CADDY_CERT_BASE="/root/.local/share/caddy/certificates"
+  XRAY_CERT_DIR="/usr/local/etc/xray/certs"
+  XRF_DEBUG="${XRF_DEBUG:-false}"
+  XRF_JSON="${XRF_JSON:-false}"
+fi
+
 DOMAIN="${1:-}"
-CADDY_CERT_BASE="/root/.local/share/caddy/certificates"
-XRAY_CERT_DIR="/usr/local/etc/xray/certs"
-XRF_DEBUG="${XRF_DEBUG:-false}"
-XRF_JSON="${XRF_JSON:-false}"
 
 # Embedded logging (compatible with core::log from lib/core.sh)
 log() {

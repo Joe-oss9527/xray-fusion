@@ -4,16 +4,18 @@
 # NOTE: This file is sourced. Strict mode is set by the calling script or core::init()
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib/defaults.sh
+. "${HERE}/lib/defaults.sh"
 # shellcheck source=lib/validators.sh
 . "${HERE}/lib/validators.sh"
 
 # Initialize default values
 args::init() {
-  TOPOLOGY="reality-only"
+  TOPOLOGY="${DEFAULT_TOPOLOGY}"
   DOMAIN=""
-  VERSION="latest"
+  VERSION="${DEFAULT_VERSION}"
   PLUGINS=""
-  DEBUG="false"
+  DEBUG="${DEFAULT_XRF_DEBUG}"
 }
 
 # Parse command line arguments

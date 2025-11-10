@@ -2,6 +2,7 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 . "${HERE}/lib/core.sh"
+. "${HERE}/lib/errors.sh"
 . "${HERE}/lib/validators.sh"
 . "${HERE}/lib/plugins.sh"
 . "${HERE}/modules/io.sh"
@@ -233,9 +234,12 @@ deploy_release() {
   core::log debug "deploy_release started" "$(printf '{"release_dir":"%s"}' "${release_dir}")"
 
   # Security: Validate directory path to prevent injection attacks
-  if [[ ! "${release_dir}" =~ ^/[a-zA-Z0-9/_.-]+$ ]]; then
-    core::log error "invalid directory path" "$(printf '{"path":"%s"}' "${release_dir}")"
-    return 1
+  # Reject: parent references (..), consecutive slashes (//), invalid characters
+  if [[ ! "${release_dir}" =~ ^/([a-zA-Z0-9_-]+/)*[a-zA-Z0-9_-]+$ ]] || \
+     [[ "${release_dir}" == *".."* ]] || \
+     [[ "${release_dir}" == *"//"* ]]; then
+    core::log error "invalid directory path" "$(printf '{"path":"%s","reason":"path validation failed"}' "${release_dir//\"/\\\"}")"
+    return "${ERR_INVALID_ARG}"
   fi
 
   if [[ ! -d "${release_dir}" ]]; then
