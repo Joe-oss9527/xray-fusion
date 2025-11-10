@@ -266,7 +266,8 @@ deploy_release() {
 
   # Security: Validate directory path to prevent injection attacks
   # Reject: parent references (..), consecutive slashes (//), invalid characters
-  if [[ ! "${release_dir}" =~ ^/([a-zA-Z0-9_-]+/)*[a-zA-Z0-9_-]+$ ]] \
+  # Note: Dots are allowed for hidden dirs (.config) and temp dirs (xrf.release.xxx)
+  if [[ ! "${release_dir}" =~ ^/([a-zA-Z0-9._-]+/)*[a-zA-Z0-9._-]+$ ]] \
     || [[ "${release_dir}" == *".."* ]] \
     || [[ "${release_dir}" == *"//"* ]]; then
     core::log error "invalid directory path" "$(printf '{"path":"%s","reason":"path validation failed"}' "${release_dir//\"/\\\"}")"
