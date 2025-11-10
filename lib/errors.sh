@@ -26,20 +26,20 @@ readonly ERR_INVALID_VERSION=24  # Version validation failed
 readonly ERR_INVALID_TOPOLOGY=25 # Topology validation failed
 
 # === Plugin Errors (30-39) ===
-readonly ERR_PLUGIN_NOT_FOUND=30   # Plugin does not exist
-readonly ERR_PLUGIN_LOAD_FAIL=31   # Plugin failed to load
-readonly ERR_PLUGIN_HOOK_FAIL=32   # Plugin hook execution failed
+readonly ERR_PLUGIN_NOT_FOUND=30 # Plugin does not exist
+readonly ERR_PLUGIN_LOAD_FAIL=31 # Plugin failed to load
+readonly ERR_PLUGIN_HOOK_FAIL=32 # Plugin hook execution failed
 
 # === Service Errors (40-49) ===
-readonly ERR_SERVICE_START_FAIL=40  # Service failed to start
-readonly ERR_SERVICE_STOP_FAIL=41   # Service failed to stop
-readonly ERR_SERVICE_NOT_FOUND=42   # Service not found
+readonly ERR_SERVICE_START_FAIL=40 # Service failed to start
+readonly ERR_SERVICE_STOP_FAIL=41  # Service failed to stop
+readonly ERR_SERVICE_NOT_FOUND=42  # Service not found
 
 # === File Operation Errors (50-59) ===
-readonly ERR_FILE_NOT_FOUND=50     # File does not exist
-readonly ERR_FILE_READ_FAIL=51     # Cannot read file
-readonly ERR_FILE_WRITE_FAIL=52    # Cannot write file
-readonly ERR_DIR_CREATE_FAIL=53    # Cannot create directory
+readonly ERR_FILE_NOT_FOUND=50  # File does not exist
+readonly ERR_FILE_READ_FAIL=51  # Cannot read file
+readonly ERR_FILE_WRITE_FAIL=52 # Cannot write file
+readonly ERR_DIR_CREATE_FAIL=53 # Cannot create directory
 
 # === Helper: Get error message ===
 # Usage: errors::message <error_code>
@@ -86,7 +86,7 @@ errors::exit() {
 
   if [[ -n "${msg}" ]]; then
     # Use core::log if available, otherwise fallback to printf
-    if declare -F core::log >/dev/null 2>&1; then
+    if declare -F core::log > /dev/null 2>&1; then
       core::log error "${msg}" "$(printf '{"exit_code":%d}' "${code}")"
     else
       printf '[ERROR] %s (exit code: %d)\n' "${msg}" "${code}" >&2
