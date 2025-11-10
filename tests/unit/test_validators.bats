@@ -109,9 +109,15 @@ teardown() {
 }
 
 @test "validators::domain - accepts domain at 253 character limit" {
-  # Create a valid domain exactly 253 chars
+  # Create a valid domain exactly 253 chars with valid label lengths
+  # 4 labels of 63 chars each = 252 chars + 3 dots = 255, so use 62+63+63+63 = 251 + 3 = 254
+  # Use 61+63+63+63 = 250 + 3 = 253 chars total
   local max_domain
-  max_domain="$(printf 'a%.0s' {1..240}).example.com"  # 253 chars
+  max_domain="$(printf 'a%.0s' {1..61}).$(printf 'b%.0s' {1..63}).$(printf 'c%.0s' {1..63}).$(printf 'd%.0s' {1..63})"
+
+  # Verify it's exactly 253 chars
+  [[ ${#max_domain} -eq 253 ]] || skip "test domain not 253 chars: ${#max_domain}"
+
   run validators::domain "${max_domain}"
   [ "$status" -eq 0 ]
 }
