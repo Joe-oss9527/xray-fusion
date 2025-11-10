@@ -152,29 +152,35 @@ download::via_tarball() {
   fi
 
   local tarball="${dest_dir}/archive.tar.gz"
+  local download_success=false
 
   # Try curl first
   if command -v curl >/dev/null 2>&1; then
     core::log debug "attempting download via curl" "$(printf '{"url":"%s"}' "${url}")"
     if curl -fsSL --connect-timeout 10 --max-time 300 "${url}" -o "${tarball}" 2>/dev/null; then
       core::log debug "download successful via curl" '{}'
+      download_success=true
     else
       core::log warn "curl download failed" '{}'
       rm -f "${tarball}"
-      return 1
     fi
-  # Fallback to wget
-  elif command -v wget >/dev/null 2>&1; then
+  fi
+
+  # Fallback to wget if curl failed or unavailable
+  if [[ "${download_success}" == "false" ]] && command -v wget >/dev/null 2>&1; then
     core::log debug "attempting download via wget" "$(printf '{"url":"%s"}' "${url}")"
     if wget -q --timeout=10 "${url}" -O "${tarball}" 2>/dev/null; then
       core::log debug "download successful via wget" '{}'
+      download_success=true
     else
       core::log warn "wget download failed" '{}'
       rm -f "${tarball}"
-      return 1
     fi
-  else
-    core::log error "no download tool available (curl/wget)" '{}'
+  fi
+
+  # Check if download succeeded
+  if [[ "${download_success}" == "false" ]]; then
+    core::log error "all download attempts failed (curl/wget)" '{}'
     return 1
   fi
 
