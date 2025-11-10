@@ -81,39 +81,15 @@ main() {
     XRAY_REALITY_DEST="${XRAY_REALITY_DEST}:443"
   fi
   # Generate shortIds pool (3-5 shortIds for multi-client scenarios)
-  # Uses reliable hex conversion: xxd (simple) → od (POSIX) → openssl (fallback)
+  # Uses xray::generate_shortid() from services/xray/common.sh
+  # Tries: xxd (simple) → od (POSIX) → openssl (fallback)
 
   # Primary shortId (backward compatible)
-  if [[ -z "${XRAY_SHORT_ID:-}" ]]; then
-    if command -v xxd > /dev/null 2>&1; then
-      XRAY_SHORT_ID="$(head -c 8 /dev/urandom | xxd -p -c 16)"
-    elif command -v od > /dev/null 2>&1; then
-      XRAY_SHORT_ID="$(head -c 8 /dev/urandom | od -An -tx1 -v | tr -d ' \n')"
-    else
-      XRAY_SHORT_ID="$(openssl rand -hex 8)"
-    fi
-  fi
+  [[ -z "${XRAY_SHORT_ID:-}" ]] && XRAY_SHORT_ID="$(xray::generate_shortid)" || true
 
   # Additional shortIds for future client differentiation (optional)
-  if [[ -z "${XRAY_SHORT_ID_2:-}" ]]; then
-    if command -v xxd > /dev/null 2>&1; then
-      XRAY_SHORT_ID_2="$(head -c 8 /dev/urandom | xxd -p -c 16)"
-    elif command -v od > /dev/null 2>&1; then
-      XRAY_SHORT_ID_2="$(head -c 8 /dev/urandom | od -An -tx1 -v | tr -d ' \n')"
-    else
-      XRAY_SHORT_ID_2="$(openssl rand -hex 8)"
-    fi
-  fi
-
-  if [[ -z "${XRAY_SHORT_ID_3:-}" ]]; then
-    if command -v xxd > /dev/null 2>&1; then
-      XRAY_SHORT_ID_3="$(head -c 8 /dev/urandom | xxd -p -c 16)"
-    elif command -v od > /dev/null 2>&1; then
-      XRAY_SHORT_ID_3="$(head -c 8 /dev/urandom | od -An -tx1 -v | tr -d ' \n')"
-    else
-      XRAY_SHORT_ID_3="$(openssl rand -hex 8)"
-    fi
-  fi
+  [[ -z "${XRAY_SHORT_ID_2:-}" ]] && XRAY_SHORT_ID_2="$(xray::generate_shortid)" || true
+  [[ -z "${XRAY_SHORT_ID_3:-}" ]] && XRAY_SHORT_ID_3="$(xray::generate_shortid)" || true
 
   # Validate all generated shortIds (hex format, even length, max 16 chars)
   # Use shared validator from lib/validators.sh
@@ -123,6 +99,8 @@ main() {
       exit 1
     fi
   done
+
+  core::log debug "shortIds generated" "$(printf '{"primary":"%s","sid2":"%s","sid3":"%s"}' "${XRAY_SHORT_ID}" "${XRAY_SHORT_ID_2}" "${XRAY_SHORT_ID_3}")"
 
   # Generate private/public key pair if not provided
   if [[ -z "${XRAY_PRIVATE_KEY:-}" && -x "$(xray::bin)" ]]; then
