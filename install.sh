@@ -34,6 +34,91 @@ log_warn() { echo -e "${YELLOW}[WARN]${NC} ${*}"; }
 log_error() { echo -e "${RED}[ERROR]${NC} ${*}"; }
 log_debug() { [[ "${DEBUG}" == "true" ]] && echo -e "${BLUE}[DEBUG]${NC} ${*}" || true; }
 
+##
+# Log installation step with progress indicator
+#
+# Displays a step counter [N/M] followed by the step description.
+# Uses BLUE color for the progress indicator.
+#
+# Arguments:
+#   $1 - Current step number
+#   $2 - Total steps
+#   $3 - Step description
+#
+# Example:
+#   log_step 1 7 "检查运行环境"
+#   # Output: [1/7] 检查运行环境
+##
+log_step() {
+  local current="${1}"
+  local total="${2}"
+  local desc="${3}"
+  echo -e "${BLUE}[${current}/${total}]${NC} ${desc}"
+}
+
+##
+# Log sub-step with indentation and status icon
+#
+# Displays a sub-step with 2-space indentation and a status icon:
+# - • (bullet, default): in progress or neutral status
+# - ✓ (checkmark): success
+# - ✗ (cross): error
+#
+# Arguments:
+#   $1 - Sub-step description
+#   $2 - Status icon (optional): •, ✓, ✗, or text aliases (success, error)
+#
+# Example:
+#   log_substep "ROOT 权限" "✓"
+#   log_substep "检查中..." "•"
+#   log_substep "失败" "error"
+##
+log_substep() {
+  local desc="${1}"
+  local icon="${2:-•}"
+
+  case "${icon}" in
+    success | ✓) echo -e "  ${GREEN}✓${NC} ${desc}" ;;
+    error | ✗) echo -e "  ${RED}✗${NC} ${desc}" ;;
+    *) echo -e "  ${BLUE}•${NC} ${desc}" ;;
+  esac
+}
+
+##
+# Show spinner animation for long-running tasks
+#
+# Displays a rotating spinner with a description. This function runs
+# in an infinite loop and should be started in background. Kill the
+# process when the task completes.
+#
+# The spinner is skipped when DEBUG mode is enabled to avoid interfering
+# with debug output.
+#
+# Arguments:
+#   $1 - Task description to show next to spinner
+#
+# Globals:
+#   DEBUG - If "true", spinner is not shown
+#
+# Example:
+#   show_spinner "正在下载..." &
+#   SPINNER_PID=$!
+#   long_running_command
+#   kill ${SPINNER_PID} 2>/dev/null
+#   printf "\r"  # Clear spinner line
+##
+show_spinner() {
+  local desc="${1}"
+  local chars="⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+  local i=0
+
+  while true; do
+    printf "\r  ${BLUE}${chars:$i:1}${NC} %s" "${desc}"
+    i=$(((i + 1) % ${#chars}))
+    sleep 0.1
+  done
+}
+
 # Error handling
 error_exit() {
   log_error "${1}"
@@ -733,24 +818,74 @@ EOF
 
   parse_args "${@}"
 
-  # Check dependencies early (fail-fast before downloads)
+  # === Step 1: Dependency check (fail-fast) ===
+  log_step 1 7 "检查核心依赖"
   check_dependencies || error_exit "依赖检查失败，无法继续安装"
+  log_substep "下载工具可用" "✓"
+  log_substep "系统工具就绪" "✓"
 
-  # Run early checks first
+  # === Step 2: Environment checks ===
+  log_step 2 7 "检查运行环境"
   early_checks
+  log_substep "ROOT 权限" "✓"
+  log_substep "systemd 可用" "✓"
+  log_substep "架构支持 ($(uname -m))" "✓"
 
   # Setup environment from parsed arguments
   setup_environment
 
-  # Continue with installation steps
+  # === Step 3: Configuration validation ===
+  log_step 3 7 "验证配置参数"
+  log_substep "拓扑: ${TOPOLOGY}" "✓"
+  [[ -n "${DOMAIN}" ]] && log_substep "域名: ${DOMAIN}" "✓"
+  log_substep "版本: ${VERSION}" "✓"
+
+  # === Step 4: System compatibility check ===
+  log_step 4 7 "检查系统兼容性"
   check_system
+  log_substep "操作系统兼容" "✓"
+
+  # === Step 5: Install system dependencies ===
+  log_step 5 7 "安装必需依赖包"
   install_dependencies
+
+  # === Step 6: Download project ===
+  log_step 6 7 "下载 xray-fusion"
+  log_substep "仓库: ${REPO_URL##*/}"
+  log_substep "分支: ${BRANCH}"
+
+  # Show spinner during download (skip in debug mode)
+  if [[ "${DEBUG}" != "true" ]]; then
+    show_spinner "正在下载..." &
+    SPINNER_PID=$!
+    trap 'kill ${SPINNER_PID} 2>/dev/null || true' EXIT INT TERM
+  fi
+
   download_project
+
+  # Stop spinner if it was started
+  if [[ -n "${SPINNER_PID:-}" ]]; then
+    kill ${SPINNER_PID} 2> /dev/null || true
+    wait ${SPINNER_PID} 2> /dev/null || true
+    printf "\r"
+    unset SPINNER_PID
+  fi
+
+  log_substep "下载完成" "✓"
+
+  # === Step 7: Install and configure ===
+  log_step 7 7 "安装并配置 Xray"
   install_xray_fusion
+  log_substep "文件安装完成" "✓"
+
   run_xray_install
+  log_substep "服务启动成功" "✓"
+
+  echo ""
   show_summary
 
-  log_info "安装完成！"
+  echo ""
+  log_info "🎉 安装完成！"
 }
 
 # Run main function with all arguments

@@ -30,9 +30,9 @@ deps::check_critical() {
   # Check downloader availability (need at least one)
   local has_downloader=false
   for tool in git curl wget; do
-    if command -v "${tool}" >/dev/null 2>&1; then
+    if command -v "${tool}" > /dev/null 2>&1; then
       has_downloader=true
-      if declare -f core::log >/dev/null 2>&1; then
+      if declare -f core::log > /dev/null 2>&1; then
         core::log debug "found downloader" "$(printf '{"tool":"%s"}' "${tool}")"
       fi
       break
@@ -40,7 +40,7 @@ deps::check_critical() {
   done
 
   if [[ "${has_downloader}" == "false" ]]; then
-    if declare -f core::log >/dev/null 2>&1; then
+    if declare -f core::log > /dev/null 2>&1; then
       core::log error "需要至少一个下载工具: git, curl, 或 wget" '{}'
     else
       printf '[ERROR] 需要至少一个下载工具: git, curl, 或 wget\n' >&2
@@ -49,8 +49,8 @@ deps::check_critical() {
   fi
 
   # Check systemctl (systemd required)
-  if ! command -v systemctl >/dev/null 2>&1; then
-    if declare -f core::log >/dev/null 2>&1; then
+  if ! command -v systemctl > /dev/null 2>&1; then
+    if declare -f core::log > /dev/null 2>&1; then
       core::log error "systemctl not found (systemd required)" '{}'
     else
       printf '[ERROR] systemctl not found (systemd required)\n' >&2
@@ -60,8 +60,8 @@ deps::check_critical() {
 
   # Check basic utilities
   for tool in mktemp tar gzip; do
-    if ! command -v "${tool}" >/dev/null 2>&1; then
-      if declare -f core::log >/dev/null 2>&1; then
+    if ! command -v "${tool}" > /dev/null 2>&1; then
+      if declare -f core::log > /dev/null 2>&1; then
         core::log warn "missing utility" "$(printf '{"tool":"%s"}' "${tool}")"
       else
         printf '[WARN] missing utility: %s\n' "${tool}" >&2
@@ -72,7 +72,7 @@ deps::check_critical() {
 
   # Fail if any critical tool is missing
   if [[ ${#missing[@]} -gt 0 ]]; then
-    if declare -f core::log >/dev/null 2>&1; then
+    if declare -f core::log > /dev/null 2>&1; then
       core::log error "missing critical dependencies" "$(printf '{"tools":"%s"}' "${missing[*]}")"
     else
       printf '[ERROR] missing critical dependencies: %s\n' "${missing[*]}" >&2
@@ -80,7 +80,7 @@ deps::check_critical() {
     return 1
   fi
 
-  if declare -f core::log >/dev/null 2>&1; then
+  if declare -f core::log > /dev/null 2>&1; then
     core::log debug "all critical dependencies available" '{}'
   fi
   return 0
@@ -115,13 +115,13 @@ deps::check_optional() {
   local missing=()
 
   for tool in ${optional_tools}; do
-    if ! command -v "${tool}" >/dev/null 2>&1; then
+    if ! command -v "${tool}" > /dev/null 2>&1; then
       missing+=("${tool}")
     fi
   done
 
   if [[ ${#missing[@]} -gt 0 ]]; then
-    if declare -f core::log >/dev/null 2>&1; then
+    if declare -f core::log > /dev/null 2>&1; then
       core::log warn "missing optional tools (functionality may be limited)" "$(printf '{"tools":"%s"}' "${missing[*]}")"
     else
       printf '[WARN] missing optional tools (functionality may be limited): %s\n' "${missing[*]}" >&2
