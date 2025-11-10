@@ -998,7 +998,8 @@
    # - No parent directory references (..)
    # - No consecutive slashes
    # - Only alphanumeric, underscore, hyphen, dot, slash
-   if [[ ! "${release_dir}" =~ ^/([a-zA-Z0-9_-]+/)*[a-zA-Z0-9_-]+$ ]] || \
+   # Note: Dots are allowed for hidden dirs (.config) and temp dirs (xrf.release.xxx)
+   if [[ ! "${release_dir}" =~ ^/([a-zA-Z0-9._-]+/)*[a-zA-Z0-9._-]+$ ]] || \
       [[ "${release_dir}" == *".."* ]] || \
       [[ "${release_dir}" == *"//"* ]]; then
      core::log error "invalid directory path" "$(printf '{"path":"%s","reason":"path validation failed"}' "${release_dir//\"/\\\"}")"
@@ -1038,7 +1039,7 @@
    @test "path validation - accepts valid absolute path" {
      local test_path="/usr/local/etc/xray/releases/20251110"
 
-     if [[ "${test_path}" =~ ^/([a-zA-Z0-9_-]+/)*[a-zA-Z0-9_-]+$ ]] && \
+     if [[ "${test_path}" =~ ^/([a-zA-Z0-9._-]+/)*[a-zA-Z0-9._-]+$ ]] && \
         [[ "${test_path}" != *".."* ]] && \
         [[ "${test_path}" != *"//"* ]]; then
        result="accepted"
