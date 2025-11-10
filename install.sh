@@ -355,7 +355,55 @@ download_project() {
     error_exit "下载失败"
   fi
 
-  # Verify download
+  # === NEW: Verify download integrity ===
+
+  # Source download verification module if available
+  if [[ -f "${TMP_DIR}/xray-fusion/lib/download.sh" ]]; then
+    # Need core.sh for logging
+    if [[ -f "${TMP_DIR}/xray-fusion/lib/core.sh" ]]; then
+      source "${TMP_DIR}/xray-fusion/lib/core.sh"
+    fi
+    source "${TMP_DIR}/xray-fusion/lib/download.sh"
+  fi
+
+  # 1. Get actual commit hash
+  local actual_commit=""
+  if [[ -d "${TMP_DIR}/xray-fusion/.git" ]]; then
+    actual_commit=$(git -C "${TMP_DIR}/xray-fusion" rev-parse HEAD 2> /dev/null || true)
+    if [[ -n "${actual_commit}" ]]; then
+      log_debug "下载的 commit: ${actual_commit}"
+    fi
+  fi
+
+  # 2. Verify against expected commit (if provided)
+  if [[ -n "${XRF_EXPECTED_COMMIT:-}" && -n "${actual_commit}" ]]; then
+    log_info "验证下载完整性..."
+    if [[ "${actual_commit,,}" != "${XRF_EXPECTED_COMMIT,,}" ]]; then
+      log_error "下载完整性验证失败：commit hash 不匹配"
+      log_error "期望: ${XRF_EXPECTED_COMMIT}"
+      log_error "实际: ${actual_commit}"
+      error_exit "完整性验证失败（可能的中间人攻击）"
+    fi
+    log_info "✓ Commit 验证通过"
+  else
+    if [[ -n "${actual_commit}" ]]; then
+      log_debug "跳过 commit 验证（未指定 XRF_EXPECTED_COMMIT）"
+      log_debug "要启用验证，请设置: export XRF_EXPECTED_COMMIT='${actual_commit}'"
+    fi
+  fi
+
+  # 3. Verify GPG signature (optional)
+  if [[ -d "${TMP_DIR}/xray-fusion/.git" ]] && command -v gpg > /dev/null 2>&1; then
+    if git -C "${TMP_DIR}/xray-fusion" verify-commit HEAD 2> /dev/null; then
+      log_info "✓ GPG 签名验证通过"
+    else
+      log_debug "GPG 签名验证失败或 commit 未签名（可选验证）"
+    fi
+  fi
+
+  # === END: Verification ===
+
+  # Verify download completeness
   if [[ ! -d "${TMP_DIR}/xray-fusion" ]] || [[ ! -f "${TMP_DIR}/xray-fusion/bin/xrf" ]]; then
     error_exit "下载的文件不完整或损坏"
   fi
