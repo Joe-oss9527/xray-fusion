@@ -97,7 +97,28 @@ fi
 
 DOMAIN="${1:-}"
 
-# Embedded logging (compatible with core::log from lib/core.sh)
+##
+# Standalone logging function compatible with core::log
+#
+# This is a lightweight version for standalone scripts that cannot
+# source lib/core.sh. Maintains compatibility with the main logging
+# system's format and behavior.
+#
+# Arguments:
+#   $1 - Log level (debug|info|warn|error)
+#   $2 - Message string
+#
+# Globals:
+#   XRF_JSON - If "true", output JSON format
+#   XRF_DEBUG - If "true", show debug messages
+#
+# Output:
+#   Log line to stderr (text or JSON format)
+#
+# Example:
+#   log info "Certificate synced successfully"
+#   log error "Failed to sync certificate"
+##
 log() {
   local lvl="${1}"
   shift
@@ -106,13 +127,18 @@ log() {
   # Filter debug messages unless XRF_DEBUG is true
   [[ "${lvl}" == "debug" && "${XRF_DEBUG}" != "true" ]] && return 0
 
-  # All logs to stderr
+  # Generate ISO 8601 timestamp (UTC)
+  local ts
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+  # All logs to stderr (consistent with lib/core.sh)
   if [[ "${XRF_JSON}" == "true" ]]; then
     printf '{"ts":"%s","level":"%s","msg":"[caddy-cert-sync] %s"}\n' \
-      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${lvl}" "${msg}" >&2
+      "${ts}" "${lvl}" "${msg}" >&2
   else
-    printf '[%s] %-5s [caddy-cert-sync] %s\n' \
-      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${lvl}" "${msg}" >&2
+    # Use consistent width: %-8s (matches lib/core.sh format)
+    printf '[%s] %-8s [caddy-cert-sync] %s\n' \
+      "${ts}" "${lvl}" "${msg}" >&2
   fi
 }
 
