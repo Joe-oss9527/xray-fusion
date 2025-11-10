@@ -5,16 +5,16 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 . "${HERE}/lib/core.sh"
 
 io::ensure_dir() {
-  local d="${1}" m="${2:-0755}"
-  [[ -d "${d}" ]] && {
-    chmod "${m}" "${d}" || true
+  local dir="${1}" mode="${2:-0755}"
+  [[ -d "${dir}" ]] && {
+    chmod "${mode}" "${dir}" || true
     return 0
   }
-  mkdir -p "${d}" 2> /dev/null || {
-    core::log warn "mkdir fallback sudo" "$(printf '{"dir":"%s"}' "${d}")"
-    sudo mkdir -p "${d}"
+  mkdir -p "${dir}" 2> /dev/null || {
+    core::log warn "mkdir fallback sudo" "$(printf '{"dir":"%s"}' "${dir}")"
+    sudo mkdir -p "${dir}"
   }
-  chmod "${m}" "${d}" || true
+  chmod "${mode}" "${dir}" || true
 }
 
 io::writable() { test -w "${1}" 2> /dev/null; }

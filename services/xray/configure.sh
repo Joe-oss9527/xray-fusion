@@ -13,13 +13,13 @@ core::log debug "configure.sh started" "$(printf '{"args":"%s"}' "$*")"
 # Helper: Convert CSV to JSON array
 json_array_from_csv() {
   local IFS=','
-  read -ra a <<< "${1}"
-  local o="["
-  for n in "${a[@]}"; do
-    n="$(echo "${n}" | xargs)"
-    [[ -n "${n}" ]] && o="${o}\"${n}\","
+  read -ra items <<< "${1}"
+  local json_output="["
+  for item in "${items[@]}"; do
+    item="$(echo "${item}" | xargs)"
+    [[ -n "${item}" ]] && json_output="${json_output}\"${item}\","
   done
-  printf '%s' "${o%,}]"
+  printf '%s' "${json_output%,}]"
 }
 
 # Helper: Ensure reality destination format (hostname:port)
@@ -43,23 +43,23 @@ build_shortids_pool() {
 
 # Helper: Calculate config directory digest
 digest_confdir() {
-  local d="${1}"
+  local confdir="${1}"
   if command -v jq > /dev/null 2>&1; then
-    (for f in "${d}"/*.json; do jq -S -c . "${f}"; done) | sha256sum | awk '{print $1}'
+    (for f in "${confdir}"/*.json; do jq -S -c . "${f}"; done) | sha256sum | awk '{print $1}'
   else
-    cat "${d}"/*.json | sha256sum | awk '{print $1}'
+    cat "${confdir}"/*.json | sha256sum | awk '{print $1}'
   fi
 }
 
 # Prepare release directory with timestamp
 xray::prepare_release_dir() {
-  local rel ts d
-  rel="$(xray::releases)"
-  io::ensure_dir "${rel}" 0755
-  ts="$(date -u +%Y%m%d%H%M%S)"
-  d="${rel}/${ts}"
-  io::ensure_dir "${d}" 0750
-  printf '%s' "${d}"
+  local releases_dir timestamp release_dir
+  releases_dir="$(xray::releases)"
+  io::ensure_dir "${releases_dir}" 0755
+  timestamp="$(date -u +%Y%m%d%H%M%S)"
+  release_dir="${releases_dir}/${timestamp}"
+  io::ensure_dir "${release_dir}" 0750
+  printf '%s' "${release_dir}"
 }
 
 # Write base configuration files (log, outbounds, routing)
@@ -184,19 +184,19 @@ render_release() {
   local topology="${1}"
 
   # Step 1: Prepare release directory
-  local d
-  d="$(xray::prepare_release_dir)"
-  core::log debug "release directory created" "$(printf '{"dir":"%s"}' "${d}")"
+  local release_dir
+  release_dir="$(xray::prepare_release_dir)"
+  core::log debug "release directory created" "$(printf '{"dir":"%s"}' "${release_dir}")"
 
   # Step 2: Initialize plugin system and emit pre-configure hooks
   : "${XRAY_LOG_LEVEL:=warning}"
   : "${XRAY_SNIFFING:=false}"
   plugins::ensure_dirs
   plugins::load_enabled
-  plugins::emit configure_pre "topology=${topology}" "release_dir=${d}"
+  plugins::emit configure_pre "topology=${topology}" "release_dir=${release_dir}"
 
   # Step 3: Write base configuration files
-  xray::write_base_configs "${d}"
+  xray::write_base_configs "${release_dir}"
 
   # Step 4: Determine sniffing mode
   local sniff_bool
@@ -205,10 +205,10 @@ render_release() {
   # Step 5: Render topology-specific inbound configuration
   case "${topology}" in
     reality-only)
-      xray::render_reality_inbound "${d}" "${sniff_bool}"
+      xray::render_reality_inbound "${release_dir}" "${sniff_bool}"
       ;;
     vision-reality)
-      xray::render_vision_reality_inbounds "${d}" "${sniff_bool}"
+      xray::render_vision_reality_inbounds "${release_dir}" "${sniff_bool}"
       ;;
     *)
       core::log error "unknown topology" "$(printf '{"topology":"%s"}' "${topology}")"
@@ -217,29 +217,29 @@ render_release() {
   esac
 
   # Step 6: Set permissions on config directory and files
-  xray::set_config_permissions "${d}"
+  xray::set_config_permissions "${release_dir}"
 
   # Step 7: Emit post-configure hooks
-  core::log debug "emitting configure_post" "$(printf '{"topology":"%s","release_dir":"%s"}' "${topology}" "${d}")"
-  plugins::emit configure_post "topology=${topology}" "release_dir=${d}"
+  core::log debug "emitting configure_post" "$(printf '{"topology":"%s","release_dir":"%s"}' "${topology}" "${release_dir}")"
+  plugins::emit configure_post "topology=${topology}" "release_dir=${release_dir}"
 
   # Step 8: Return release directory path to stdout
-  core::log debug "render_release complete" "$(printf '{"release_dir":"%s"}' "${d}")"
-  printf '%s\n' "${d}"
+  core::log debug "render_release complete" "$(printf '{"release_dir":"%s"}' "${release_dir}")"
+  printf '%s\n' "${release_dir}"
 }
 
 deploy_release() {
-  local d="${1}"
-  core::log debug "deploy_release started" "$(printf '{"release_dir":"%s"}' "${d}")"
+  local release_dir="${1}"
+  core::log debug "deploy_release started" "$(printf '{"release_dir":"%s"}' "${release_dir}")"
 
   # Security: Validate directory path to prevent injection attacks
-  if [[ ! "${d}" =~ ^/[a-zA-Z0-9/_.-]+$ ]]; then
-    core::log error "invalid directory path" "$(printf '{"path":"%s"}' "${d}")"
+  if [[ ! "${release_dir}" =~ ^/[a-zA-Z0-9/_.-]+$ ]]; then
+    core::log error "invalid directory path" "$(printf '{"path":"%s"}' "${release_dir}")"
     return 1
   fi
 
-  if [[ ! -d "${d}" ]]; then
-    core::log error "directory does not exist" "$(printf '{"path":"%s"}' "${d}")"
+  if [[ ! -d "${release_dir}" ]]; then
+    core::log error "directory does not exist" "$(printf '{"path":"%s"}' "${release_dir}")"
     return 1
   fi
 
@@ -247,26 +247,26 @@ deploy_release() {
     local xray_bin test_output
     xray_bin="$(xray::bin)"
 
-    if ! test_output="$("${xray_bin}" -test -confdir "${d}" -format json 2>&1)"; then
-      core::log error "xray config test failed" "$(printf '{"confdir":"%s","test_output":"%s"}' "${d//\"/\\\"}" "${test_output}")"
+    if ! test_output="$("${xray_bin}" -test -confdir "${release_dir}" -format json 2>&1)"; then
+      core::log error "xray config test failed" "$(printf '{"confdir":"%s","test_output":"%s"}' "${release_dir//\"/\\\"}" "${test_output}")"
       printf '%s\n' "${test_output}" >&2
       return 1
     fi
-    core::log debug "xray config test passed" "$(printf '{"confdir":"%s"}' "${d}")"
+    core::log debug "xray config test passed" "$(printf '{"confdir":"%s"}' "${release_dir}")"
   fi
-  local newdg
-  newdg="$(digest_confdir "${d}")"
-  local olddg=""
-  [[ -f "$(state::digest)" ]] && olddg="$(cat "$(state::digest)")"
-  if [[ -n "${olddg}" && "${olddg}" == "${newdg}" ]]; then
-    core::log info "no changes; skip reload" "$(printf '{"digest":"%s"}' "${newdg}")"
+  local new_digest
+  new_digest="$(digest_confdir "${release_dir}")"
+  local old_digest=""
+  [[ -f "$(state::digest)" ]] && old_digest="$(cat "$(state::digest)")"
+  if [[ -n "${old_digest}" && "${old_digest}" == "${new_digest}" ]]; then
+    core::log info "no changes; skip reload" "$(printf '{"digest":"%s"}' "${new_digest}")"
     return 0
   fi
   io::ensure_dir "$(xray::confbase)" 0755
   io::ensure_dir "$(xray::releases)" 0755
-  ln -sfn "${d}" "$(xray::active).new"
+  ln -sfn "${release_dir}" "$(xray::active).new"
   mv -Tf "$(xray::active).new" "$(xray::active)"
-  echo "${newdg}" | io::atomic_write "$(state::digest)" 0644
+  echo "${new_digest}" | io::atomic_write "$(state::digest)" 0644
   if command -v systemctl > /dev/null 2>&1 && systemctl is-active --quiet xray 2> /dev/null; then systemctl reload-or-restart xray || systemctl restart xray || true; fi
   plugins::emit deploy_post "active_dir=$(xray::active)"
   core::log info "deployed" "$(printf '{"active":"%s"}' "$(xray::active)")"
@@ -274,9 +274,9 @@ deploy_release() {
 
 deploy_with_lock() {
   local topology="${1}"
-  local d
-  d="$(render_release "${topology}")"
-  deploy_release "${d}"
+  local release_dir
+  release_dir="$(render_release "${topology}")"
+  deploy_release "${release_dir}"
 }
 
 main() {

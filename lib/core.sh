@@ -7,8 +7,8 @@ core::init() {
   set -euo pipefail -E
   export XRF_JSON="${XRF_JSON:-false}"
   export XRF_DEBUG="${XRF_DEBUG:-false}"
-  for a in "${@}"; do
-    case "${a}" in
+  for arg in "${@}"; do
+    case "${arg}" in
       --json) XRF_JSON=true ;;
       --debug) XRF_DEBUG=true ;;
       *) ;;
@@ -18,9 +18,9 @@ core::init() {
 }
 
 core::error_handler() {
-  local rc="${1}" ln="${2}" cmd="${3}"
-  core::log error "trap" "$(printf '{"rc":%d,"line":%d,"cmd":"%s"}' "${rc}" "${ln}" "${cmd//\"/\\\"}")"
-  exit "${rc}"
+  local return_code="${1}" line_number="${2}" command="${3}"
+  core::log error "trap" "$(printf '{"rc":%d,"line":%d,"cmd":"%s"}' "${return_code}" "${line_number}" "${command//\"/\\\"}")"
+  exit "${return_code}"
 }
 
 core::ts() { date -u +'%Y-%m-%dT%H:%M:%SZ'; }
@@ -46,13 +46,13 @@ core::log() {
 }
 
 core::retry() {
-  local n="${1:-3}"
+  local max_attempts="${1:-3}"
   shift
-  local i=0
+  local attempt=0
   until "${@}"; do
-    i=$((i + 1))
-    [[ ${i} -ge ${n} ]] && return 1
-    sleep $((i * i))
+    attempt=$((attempt + 1))
+    [[ ${attempt} -ge ${max_attempts} ]] && return 1
+    sleep $((attempt * attempt))
   done
 }
 
