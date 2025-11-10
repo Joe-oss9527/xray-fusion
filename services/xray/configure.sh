@@ -2,14 +2,13 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 . "${HERE}/lib/core.sh"
+. "${HERE}/lib/validators.sh"
 . "${HERE}/lib/plugins.sh"
 . "${HERE}/modules/io.sh"
 . "${HERE}/modules/state.sh"
 . "${HERE}/services/xray/common.sh"
 
 core::log debug "configure.sh started" "$(printf '{"args":"%s"}' "$*")"
-
-validate_shortid() { [[ "${#1}" -le 16 && $((${#1} % 2)) -eq 0 && "${1}" =~ ^[0-9a-fA-F]+$ ]]; }
 json_array_from_csv() {
   local IFS=','
   read -ra a <<< "${1}"

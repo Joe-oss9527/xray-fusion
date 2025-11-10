@@ -88,11 +88,9 @@ main() {
   [[ -n "${XRAY_SHORT_ID_3:-}" ]] || XRAY_SHORT_ID_3="$(openssl rand -hex 8 2> /dev/null || head -c 8 /dev/urandom | hexdump -e '16/1 \"%02x\"')"
 
   # Validate all generated shortIds (hex format, even length, max 16 chars)
-  # Source the validate_shortid function from configure.sh context
-  validate_shortid() { [[ "${#1}" -le 16 && $((${#1} % 2)) -eq 0 && "${1}" =~ ^[0-9a-fA-F]+$ ]]; }
-
+  # Use shared validator from lib/validators.sh
   for sid_var in XRAY_SHORT_ID XRAY_SHORT_ID_2 XRAY_SHORT_ID_3; do
-    if [[ -n "${!sid_var:-}" ]] && ! validate_shortid "${!sid_var}"; then
+    if [[ -n "${!sid_var:-}" ]] && ! validators::shortid "${!sid_var}"; then
       core::log error "invalid shortId format" "$(printf '{"var":"%s","value":"%s","requirements":"hex,even_length,max_16"}' "${sid_var}" "${!sid_var}")"
       exit 1
     fi
