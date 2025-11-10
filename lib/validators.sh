@@ -31,7 +31,8 @@ validators::domain() {
 
   # Check each label length (DNS specification: label <= 63)
   local IFS='.'
-  local labels=($domain)
+  local labels
+  read -ra labels <<< "$domain"
   for label in "${labels[@]}"; do
     if [[ ${#label} -gt 63 ]]; then
       core::log debug "domain validation failed: label exceeds 63" "$(printf '{"label":"%s","length":%d}' "${label}" ${#label})"
