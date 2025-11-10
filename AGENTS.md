@@ -106,6 +106,49 @@ trap cleanup EXIT INT TERM HUP
 os_info=$(source /etc/os-release 2>/dev/null && echo "${ID:-unknown} ${VERSION_ID:-unknown}")
 ```
 
+### Atomic File Operations and Security
+```bash
+# ❌ Wrong: Predictable temp file names, cross-partition mv
+io::atomic_write_old() {
+  local dst="${1}"
+  tmp="$(mktemp "${dst}.XXXX.tmp")"  # Predictable pattern, wrong location
+  cat > "${tmp}"
+  mv -f "${tmp}" "${dst}"  # May fail if cross-partition
+}
+
+# ✅ Correct: Secure temp file creation with proper cleanup
+io::atomic_write() {
+  local dst="${1}" mode="${2:-0644}"
+  local dstdir tmp
+  dstdir="$(dirname "${dst}")"
+
+  # Create in destination dir (same partition = atomic mv)
+  # Use hidden prefix + XXXXXX for unpredictability
+  tmp="$(mktemp -p "${dstdir}" .atomic-write.XXXXXX.tmp)" || return 1
+
+  # Cleanup on error/interrupt
+  trap 'rm -f "${tmp}" 2>/dev/null || true' EXIT INT TERM
+
+  cat > "${tmp}"
+  mv -f "${tmp}" "${dst}"  # Atomic on same filesystem
+  chmod "${mode}" "${dst}" || true
+
+  # Clear trap on success
+  trap - EXIT INT TERM
+}
+```
+
+**Security Benefits**:
+- ✅ **Same-partition operation**: Temp file in destination directory ensures atomic `mv`
+- ✅ **Unpredictable names**: `mktemp XXXXXX` prevents symlink attacks (CWE-59)
+- ✅ **Hidden prefix**: `.atomic-write.` avoids naming conflicts
+- ✅ **Automatic cleanup**: Trap ensures no temp file leaks
+- ✅ **Race condition防护**: Prevents TOCTOU attacks (CWE-362)
+
+**References**:
+- [CWE-362: Concurrent Execution using Shared Resource](https://cwe.mitre.org/data/definitions/362.html)
+- [CWE-59: Improper Link Resolution](https://cwe.mitre.org/data/definitions/59.html)
+
 ## Testing Guidelines
 - Test framework: bats-core with 96 unit tests across 5 test files.
 - Fast feedback: `make lint && make fmt && make test-unit`.
