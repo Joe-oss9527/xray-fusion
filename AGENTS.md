@@ -97,6 +97,57 @@ cleanup() {
 trap cleanup EXIT INT TERM HUP
 ```
 
+### Avoiding Traps in Utility Functions
+
+**Critical**: Do NOT use EXIT/INT/TERM traps in utility functions. Traps are process-level and cause unpredictable behavior in pipelines, subshells, and test frameworks.
+
+```bash
+# ❌ Wrong: Using traps in utility function
+function_with_trap() {
+  local tmp="$(mktemp)"
+  trap 'rm -f "${tmp}"' EXIT INT TERM  # Bug: triggers unexpectedly!
+  cat > "${tmp}"
+  mv "${tmp}" "/destination"
+  trap - EXIT INT TERM
+}
+
+# Caller uses pipeline:
+echo "data" | function_with_trap  # Fails! EXIT trap triggers in pipeline
+
+# ✅ Correct: Explicit cleanup on error paths
+function_without_trap() {
+  local tmp="$(mktemp)"
+
+  # Write content
+  if ! cat > "${tmp}"; then
+    rm -f "${tmp}" 2>/dev/null || true
+    return 1
+  fi
+
+  # Move to destination
+  if ! mv "${tmp}" "/destination"; then
+    rm -f "${tmp}" 2>/dev/null || true
+    return 1
+  fi
+
+  # Success - temp file moved
+  return 0
+}
+```
+
+**Why traps fail in utility functions**:
+- EXIT trap is process-level, not function-level
+- In pipelines, each command runs in a subshell with separate trap context
+- Restoring traps with `eval "trap..."` can trigger them immediately
+- Test frameworks (like bats) rely on traps and will break
+
+**Better approach**:
+- Use explicit error checking (`if ! command; then cleanup; return 1; fi`)
+- Accept that temp files may leak on SIGKILL (use hidden prefix to avoid conflicts)
+- Keep utility functions stateless and side-effect free
+
+**Reference**: See `modules/io.sh::atomic_write()` for production implementation
+
 ### Variable Pollution Defense
 ```bash
 # ❌ Wrong: Directly sourcing external files may pollute variables
@@ -105,6 +156,102 @@ trap cleanup EXIT INT TERM HUP
 # ✅ Correct: Subshell isolation
 os_info=$(source /etc/os-release 2>/dev/null && echo "${ID:-unknown} ${VERSION_ID:-unknown}")
 ```
+
+### Atomic File Operations and Security
+```bash
+# ❌ Wrong: Predictable temp file names, cross-partition mv
+io::atomic_write_old() {
+  local dst="${1}"
+  tmp="$(mktemp "${dst}.XXXX.tmp")"  # Predictable pattern, wrong location
+  cat > "${tmp}"
+  mv -f "${tmp}" "${dst}"  # May fail if cross-partition
+}
+
+# ✅ Correct: Secure temp file creation with explicit error handling
+io::atomic_write() {
+  local dst="${1}" mode="${2:-0644}"
+  local dstdir tmp
+  dstdir="$(dirname "${dst}")"
+
+  # Create in destination dir (same partition = atomic mv)
+  # Use hidden prefix + XXXXXX for unpredictability
+  tmp="$(mktemp -p "${dstdir}" .atomic-write.XXXXXX.tmp)" || return 1
+
+  # Write content to temp file
+  if ! cat > "${tmp}"; then
+    rm -f "${tmp}" 2>/dev/null || true
+    return 1
+  fi
+
+  # Move to final location (atomic on same filesystem)
+  if ! mv -f "${tmp}" "${dst}"; then
+    rm -f "${tmp}" 2>/dev/null || true
+    return 1
+  fi
+
+  chmod "${mode}" "${dst}" || true
+  return 0
+}
+```
+
+**Security Benefits**:
+- ✅ **Same-partition operation**: Temp file in destination directory ensures atomic `mv`
+- ✅ **Unpredictable names**: `mktemp XXXXXX` prevents symlink attacks (CWE-59)
+- ✅ **Hidden prefix**: `.atomic-write.` avoids naming conflicts
+- ✅ **Explicit error handling**: Cleanup on each failure path
+- ✅ **No trap interference**: Works correctly in pipelines and test frameworks
+- ✅ **Race condition防护**: Prevents TOCTOU attacks (CWE-362)
+
+**References**:
+- [CWE-362: Concurrent Execution using Shared Resource](https://cwe.mitre.org/data/definitions/362.html)
+- [CWE-59: Improper Link Resolution](https://cwe.mitre.org/data/definitions/59.html)
+
+### Permission and Ownership Edge Cases
+
+When dealing with files that may be created by different users (root vs non-root), always ensure **both permissions AND ownership** are correct. This is especially critical for lock files and shared resources.
+
+**⚠️ Common Scenario:**
+```bash
+# Run 1: sudo xrf install → creates lock file owned by root:root 0644
+# Run 2: xrf status (non-root user) → lock file still root-owned
+# Result: exec 200>> "${lock}" fails (cannot append to root-owned file)
+```
+
+**❌ Wrong: Only fixing permissions**
+```bash
+if test -f "${lock}"; then
+  # File exists from previous run
+  chmod 0644 "${lock}" 2>/dev/null || true
+  # Bug: still owned by root, non-root user cannot write
+fi
+
+exec 200>> "${lock}"  # Fails if file is root-owned
+```
+
+**✅ Correct: Fix both ownership and permissions**
+```bash
+if test -f "${lock}"; then
+  # File exists, may be root-owned from previous sudo run
+  # Fix ownership first
+  if ! chown "$(id -u):$(id -g)" "${lock}" 2>/dev/null; then
+    sudo chown "$(id -u):$(id -g)" "${lock}" 2>/dev/null || true
+  fi
+  # Then fix permissions
+  if ! chmod 0644 "${lock}" 2>/dev/null; then
+    sudo chmod 0644 "${lock}" 2>/dev/null || true
+  fi
+fi
+
+exec 200>> "${lock}"  # Now succeeds for all users
+```
+
+**Why this matters**:
+- Mixed sudo/non-sudo usage is common in deployment tools
+- Lock files must be writable by all legitimate users
+- Permissions alone don't guarantee write access (ownership matters)
+- Fixes CWE-283 (Unverified Ownership)
+
+**Reference**: See `lib/core.sh::with_flock()` for production implementation
 
 ## Testing Guidelines
 - Test framework: bats-core with 96 unit tests across 5 test files.

@@ -7,8 +7,8 @@ core::init() {
   set -euo pipefail -E
   export XRF_JSON="${XRF_JSON:-false}"
   export XRF_DEBUG="${XRF_DEBUG:-false}"
-  for a in "${@}"; do
-    case "${a}" in
+  for arg in "${@}"; do
+    case "${arg}" in
       --json) XRF_JSON=true ;;
       --debug) XRF_DEBUG=true ;;
       *) ;;
@@ -18,9 +18,9 @@ core::init() {
 }
 
 core::error_handler() {
-  local rc="${1}" ln="${2}" cmd="${3}"
-  core::log error "trap" "$(printf '{"rc":%d,"line":%d,"cmd":"%s"}' "${rc}" "${ln}" "${cmd//\"/\\\"}")"
-  exit "${rc}"
+  local return_code="${1}" line_number="${2}" command="${3}"
+  core::log error "trap" "$(printf '{"rc":%d,"line":%d,"cmd":"%s"}' "${return_code}" "${line_number}" "${command//\"/\\\"}")"
+  exit "${return_code}"
 }
 
 core::ts() { date -u +'%Y-%m-%dT%H:%M:%SZ'; }
@@ -46,13 +46,13 @@ core::log() {
 }
 
 core::retry() {
-  local n="${1:-3}"
+  local max_attempts="${1:-3}"
   shift
-  local i=0
+  local attempt=0
   until "${@}"; do
-    i=$((i + 1))
-    [[ ${i} -ge ${n} ]] && return 1
-    sleep $((i * i))
+    attempt=$((attempt + 1))
+    [[ ${attempt} -ge ${max_attempts} ]] && return 1
+    sleep $((attempt * attempt))
   done
 }
 
@@ -69,14 +69,26 @@ core::with_flock() {
     core::log warn "mkdir fallback sudo" "$(printf '{"dir":"%s"}' "${dir//\"/\\\"}")"
     sudo mkdir -p "${dir}"
   fi
-  if ! touch "${lock}" 2> /dev/null; then
-    core::log warn "touch needs sudo" "$(printf '{"file":"%s"}' "${lock//\"/\\\"}")"
-    sudo touch "${lock}"
-    sudo chown "$(id -u):$(id -g)" "${lock}" 2> /dev/null || true
+
+  # Security: Atomic lock file creation with correct ownership and permissions
+  # Use install(1) instead of touch + chown to prevent TOCTOU window
+  if ! test -f "${lock}" 2> /dev/null; then
+    if ! install -m 0644 -o "$(id -u)" -g "$(id -g)" /dev/null "${lock}" 2> /dev/null; then
+      core::log warn "lock file creation needs sudo" "$(printf '{"file":"%s"}' "${lock//\"/\\\"}")"
+      # Use install with sudo for atomic creation (single syscall, no TOCTOU)
+      sudo install -m 0644 -o "$(id -u)" -g "$(id -g)" /dev/null "${lock}" 2> /dev/null || true
+    fi
+  else
+    # Lock file exists, ensure correct ownership and permissions
+    # This handles cases where the lock was created by a previous root run
+    if ! chown "$(id -u):$(id -g)" "${lock}" 2> /dev/null; then
+      sudo chown "$(id -u):$(id -g)" "${lock}" 2> /dev/null || true
+    fi
+    if ! chmod 0644 "${lock}" 2> /dev/null; then
+      sudo chmod 0644 "${lock}" 2> /dev/null || true
+    fi
   fi
-  if ! chmod 0644 "${lock}" 2> /dev/null; then
-    sudo chmod 0644 "${lock}" 2> /dev/null || true
-  fi
+
   (
     exec 200>> "${lock}"
     flock 200

@@ -3,6 +3,10 @@
 # Provides consistent parameter interface for both install.sh and xrf commands
 # NOTE: This file is sourced. Strict mode is set by the calling script or core::init()
 
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib/validators.sh
+. "${HERE}/lib/validators.sh"
+
 # Initialize default values
 args::init() {
   TOPOLOGY="reality-only"
@@ -88,19 +92,11 @@ args::validate_domain() {
     return 0 # Domain is optional for reality-only
   fi
 
-  # Basic domain validation (RFC compliant)
-  if [[ ! "${domain}" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$ ]]; then
-    core::log error "invalid domain format" "$(printf '{"domain":"%s"}' "${domain}")"
+  # Use shared validator (RFC compliant, length limits, internal domain check)
+  if ! validators::domain "${domain}"; then
+    core::log error "invalid domain" "$(printf '{"domain":"%s"}' "${domain}")"
     return 1
   fi
-
-  # Prevent localhost and internal domains
-  case "${domain}" in
-    localhost | *.local | 127.* | 10.* | 172.1[6-9].* | 172.2[0-9].* | 172.3[0-1].* | 192.168.*)
-      core::log error "internal domain not allowed" "$(printf '{"domain":"%s"}' "${domain}")"
-      return 1
-      ;;
-  esac
 
   return 0
 }
@@ -113,12 +109,8 @@ args::validate_version() {
     return 1
   fi
 
-  # Allow 'latest' or semantic version format
-  if [[ "${version}" == "latest" ]]; then
-    return 0
-  fi
-
-  if [[ ! "${version}" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  # Use shared validator (accepts 'latest' or vX.Y.Z)
+  if ! validators::version "${version}"; then
     core::log error "invalid version format" "$(printf '{"version":"%s","format":"vX.Y.Z or latest"}' "${version}")"
     return 1
   fi

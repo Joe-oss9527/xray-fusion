@@ -6,28 +6,8 @@ XRF_PLUGIN_DESC="Auto-issue/renew TLS via Caddy for Vision"
 XRF_PLUGIN_HOOKS=("configure_pre" "service_setup")
 HERE="${HERE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
 . "${HERE}/lib/core.sh"
+. "${HERE}/lib/validators.sh"
 . "${HERE}/modules/web/caddy.sh"
-
-# Validate domain - use shared validation from args module
-_validate_domain() {
-  local domain="${1}"
-
-  # Reuse RFC-compliant validation from lib/args.sh
-  if [[ ! "${domain}" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$ ]]; then
-    core::log error "invalid domain format" "$(printf '{"domain":"%s"}' "${domain}")"
-    return 1
-  fi
-
-  # Prevent localhost and internal domains
-  case "${domain}" in
-    localhost | *.local | 127.* | 10.* | 172.1[6-9].* | 172.2[0-9].* | 172.3[0-1].* | 192.168.*)
-      core::log error "internal domain not allowed" "$(printf '{"domain":"%s"}' "${domain}")"
-      return 1
-      ;;
-  esac
-
-  return 0
-}
 
 cert_auto::configure_pre() {
   local topology="" release_dir=""
@@ -46,8 +26,8 @@ cert_auto::configure_pre() {
     return 1
   }
 
-  # Security: Validate domain name
-  if ! _validate_domain "${domain}"; then
+  # Security: Validate domain name (RFC compliant, length limits, internal domain check)
+  if ! validators::domain "${domain}"; then
     core::log error "invalid or internal domain" "$(printf '{"domain":"%s"}' "${domain}")"
     return 1
   fi
