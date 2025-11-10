@@ -9,6 +9,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 . "${HERE}/services/xray/common.sh"
 
 core::log debug "configure.sh started" "$(printf '{"args":"%s"}' "$*")"
+
+# Helper: Convert CSV to JSON array
 json_array_from_csv() {
   local IFS=','
   read -ra a <<< "${1}"
@@ -19,6 +21,8 @@ json_array_from_csv() {
   done
   printf '%s' "${o%,}]"
 }
+
+# Helper: Ensure reality destination format (hostname:port)
 ensure_reality_dest() {
   local dest="${1}" sni="${2}"
   if [[ -z "${dest}" ]]; then dest="${sni%%,*}"; fi
@@ -26,90 +30,123 @@ ensure_reality_dest() {
   if [[ "${dest}" != *:* ]]; then dest="${dest}:443"; fi
   printf '%s' "${dest}"
 }
-digest_confdir() {
-  local d="${1}"
-  if command -v jq > /dev/null 2>&1; then (for f in "${d}"/*.json; do jq -S -c . "${f}"; done) | sha256sum | awk '{print $1}'; else cat "${d}"/*.json | sha256sum | awk '{print $1}'; fi
+
+# Helper: Build shortIds pool array
+build_shortids_pool() {
+  local primary="${1}" secondary="${2:-}" tertiary="${3:-}"
+  local pool="[\"\",\"${primary}\""
+  [[ -n "${secondary}" ]] && pool="${pool},\"${secondary}\""
+  [[ -n "${tertiary}" ]] && pool="${pool},\"${tertiary}\""
+  pool="${pool}]"
+  printf '%s' "${pool}"
 }
 
-render_release() {
-  local topology="${1}" rel
+# Helper: Calculate config directory digest
+digest_confdir() {
+  local d="${1}"
+  if command -v jq > /dev/null 2>&1; then
+    (for f in "${d}"/*.json; do jq -S -c . "${f}"; done) | sha256sum | awk '{print $1}'
+  else
+    cat "${d}"/*.json | sha256sum | awk '{print $1}'
+  fi
+}
+
+# Prepare release directory with timestamp
+xray::prepare_release_dir() {
+  local rel ts d
   rel="$(xray::releases)"
   io::ensure_dir "${rel}" 0755
-  local ts
   ts="$(date -u +%Y%m%d%H%M%S)"
-  local d="${rel}/${ts}"
+  d="${rel}/${ts}"
   io::ensure_dir "${d}" 0750
+  printf '%s' "${d}"
+}
 
-  : "${XRAY_LOG_LEVEL:=warning}"
-  : "${XRAY_SNIFFING:=false}"
-  plugins::ensure_dirs
-  plugins::load_enabled
-  plugins::emit configure_pre "topology=${topology}" "release_dir=${d}"
+# Write base configuration files (log, outbounds, routing)
+xray::write_base_configs() {
+  local release_dir="${1}"
+  local log_level="${XRAY_LOG_LEVEL:-warning}"
 
-  # Logging
-  printf '{"log":{"access":"none","error":"none","loglevel":"%s"}}' "${XRAY_LOG_LEVEL}" | io::atomic_write "${d}/00_log.json" 0640
-  # Outbounds
-  printf '{"outbounds":[{"protocol":"freedom","tag":"direct"},{"protocol":"blackhole","tag":"block"}]}' | io::atomic_write "${d}/06_outbounds.json" 0640
+  # Logging configuration
+  printf '{"log":{"access":"none","error":"none","loglevel":"%s"}}' "${log_level}" |
+    io::atomic_write "${release_dir}/00_log.json" 0640
 
-  local sniff_bool
-  sniff_bool=$([[ "${XRAY_SNIFFING}" == "true" ]] && echo true || echo false)
+  # Outbounds configuration
+  printf '{"outbounds":[{"protocol":"freedom","tag":"direct"},{"protocol":"blackhole","tag":"block"}]}' |
+    io::atomic_write "${release_dir}/06_outbounds.json" 0640
 
-  case "${topology}" in
-    reality-only)
-      : "${XRAY_PORT:=443}" : "${XRAY_UUID:?}" : "${XRAY_SNI:=www.microsoft.com}" : "${XRAY_SHORT_ID:?}" : "${XRAY_PRIVATE_KEY:?}" : "${XRAY_PUBLIC_KEY:?}"
-      XRAY_REALITY_DEST="$(ensure_reality_dest "${XRAY_REALITY_DEST:-}" "${XRAY_SNI}")"
-      [[ -n "${XRAY_PRIVATE_KEY}" ]] || {
-        core::log error "XRAY_PRIVATE_KEY required"
-        exit 2
-      }
-      local sn sid_pool
-      sn="$(json_array_from_csv "${XRAY_SNI}")"
-      # Build shortIds pool: empty string + generated shortIds
-      sid_pool="[\"\",\"${XRAY_SHORT_ID}\""
-      [[ -n "${XRAY_SHORT_ID_2:-}" ]] && sid_pool="${sid_pool},\"${XRAY_SHORT_ID_2}\""
-      [[ -n "${XRAY_SHORT_ID_3:-}" ]] && sid_pool="${sid_pool},\"${XRAY_SHORT_ID_3}\""
-      sid_pool="${sid_pool}]"
+  # Routing configuration
+  printf '{"routing":{"domainStrategy":"IPIfNonMatch","rules":[]}}' |
+    io::atomic_write "${release_dir}/09_routing.json" 0640
 
-      cat > "${d}/05_inbounds.json" << JSON
+  core::log debug "base configs written" "$(printf '{"dir":"%s"}' "${release_dir}")"
+}
+
+# Render Reality-only inbound configuration
+xray::render_reality_inbound() {
+  local release_dir="${1}"
+  local sniff_bool="${2}"
+
+  # Validate required variables
+  : "${XRAY_PORT:=443}" : "${XRAY_UUID:?}" : "${XRAY_SNI:=www.microsoft.com}"
+  : "${XRAY_SHORT_ID:?}" : "${XRAY_PRIVATE_KEY:?}"
+
+  [[ -n "${XRAY_PRIVATE_KEY}" ]] || {
+    core::log error "XRAY_PRIVATE_KEY required"
+    exit 2
+  }
+
+  # Prepare configuration values
+  local reality_dest server_names shortids_pool
+  reality_dest="$(ensure_reality_dest "${XRAY_REALITY_DEST:-}" "${XRAY_SNI}")"
+  server_names="$(json_array_from_csv "${XRAY_SNI}")"
+  shortids_pool="$(build_shortids_pool "${XRAY_SHORT_ID}" "${XRAY_SHORT_ID_2:-}" "${XRAY_SHORT_ID_3:-}")"
+
+  # Write inbound configuration
+  cat > "${release_dir}/05_inbounds.json" << JSON
 {"inbounds":[{"tag":"reality","listen":"0.0.0.0","port":${XRAY_PORT},"protocol":"vless",
 "settings":{"clients":[{"id":"${XRAY_UUID}","flow":"xtls-rprx-vision"}],"decryption":"none"},
-"streamSettings":{"network":"tcp","security":"reality","realitySettings":{"show":false,"dest":"${XRAY_REALITY_DEST}","xver":0,"serverNames":${sn},"privateKey":"${XRAY_PRIVATE_KEY}","shortIds":${sid_pool},"spiderX":"/"}},
+"streamSettings":{"network":"tcp","security":"reality","realitySettings":{"show":false,"dest":"${reality_dest}","xver":0,"serverNames":${server_names},"privateKey":"${XRAY_PRIVATE_KEY}","shortIds":${shortids_pool},"spiderX":"/"}},
 "sniffing":{"enabled":${sniff_bool},"destOverride":["http","tls","quic"]}}]}
 JSON
-      ;;
-    vision-reality)
-      core::log debug "configuring vision-reality topology" "{}"
-      : "${XRAY_VISION_PORT:=8443}" : "${XRAY_REALITY_PORT:=443}" : "${XRAY_UUID_VISION:?}" : "${XRAY_UUID_REALITY:?}" : "${XRAY_DOMAIN:?}" : "${XRAY_CERT_DIR:=/usr/local/etc/xray/certs}" : "${XRAY_FALLBACK_PORT:=8080}" : "${XRAY_SNI:=www.microsoft.com}" : "${XRAY_SHORT_ID:?}" : "${XRAY_PRIVATE_KEY:?}" : "${XRAY_PUBLIC_KEY:?}"
 
-      core::log debug "vision-reality variables set" "$(printf '{"vision_port":"%s","reality_port":"%s","domain":"%s","cert_dir":"%s"}' "${XRAY_VISION_PORT}" "${XRAY_REALITY_PORT}" "${XRAY_DOMAIN}" "${XRAY_CERT_DIR}")"
+  core::log debug "reality-only inbound config written" "$(printf '{"port":%d}' "${XRAY_PORT}")"
+}
 
-      # Check for required TLS certificates first
-      core::log debug "checking TLS certificates" "$(printf '{"cert_dir":"%s"}' "${XRAY_CERT_DIR}")"
-      if [[ ! -f "${XRAY_CERT_DIR}/fullchain.pem" || ! -f "${XRAY_CERT_DIR}/privkey.pem" ]]; then
-        core::log error "vision-reality topology requires TLS certificates" "$(printf '{"cert_dir":"%s","domain":"%s","suggestion":"Use: --plugins cert-auto"}' "${XRAY_CERT_DIR}" "${XRAY_DOMAIN}")"
-        exit 2
-      fi
-      core::log debug "TLS certificates found" "$(printf '{"fullchain":"%s","privkey":"%s"}' "${XRAY_CERT_DIR}/fullchain.pem" "${XRAY_CERT_DIR}/privkey.pem")"
+# Render Vision + Reality dual inbound configuration
+xray::render_vision_reality_inbounds() {
+  local release_dir="${1}"
+  local sniff_bool="${2}"
 
-      XRAY_REALITY_DEST="$(ensure_reality_dest "${XRAY_REALITY_DEST:-}" "${XRAY_SNI}")"
-      core::log debug "reality destination set" "$(printf '{"reality_dest":"%s","sni":"%s"}' "${XRAY_REALITY_DEST}" "${XRAY_SNI}")"
+  # Validate required variables
+  : "${XRAY_VISION_PORT:=8443}" : "${XRAY_REALITY_PORT:=443}"
+  : "${XRAY_UUID_VISION:?}" : "${XRAY_UUID_REALITY:?}" : "${XRAY_DOMAIN:?}"
+  : "${XRAY_CERT_DIR:=/usr/local/etc/xray/certs}" : "${XRAY_FALLBACK_PORT:=8080}"
+  : "${XRAY_SNI:=www.microsoft.com}" : "${XRAY_SHORT_ID:?}" : "${XRAY_PRIVATE_KEY:?}"
 
-      [[ -n "${XRAY_PRIVATE_KEY}" ]] || {
-        core::log error "XRAY_PRIVATE_KEY required"
-        exit 2
-      }
+  core::log debug "vision-reality variables set" "$(printf '{"vision_port":"%s","reality_port":"%s","domain":"%s"}' \
+    "${XRAY_VISION_PORT}" "${XRAY_REALITY_PORT}" "${XRAY_DOMAIN}")"
 
-      local sn2 sid_pool2
-      sn2="$(json_array_from_csv "${XRAY_SNI}")"
-      # Build shortIds pool for reality inbound
-      sid_pool2="[\"\",\"${XRAY_SHORT_ID}\""
-      [[ -n "${XRAY_SHORT_ID_2:-}" ]] && sid_pool2="${sid_pool2},\"${XRAY_SHORT_ID_2}\""
-      [[ -n "${XRAY_SHORT_ID_3:-}" ]] && sid_pool2="${sid_pool2},\"${XRAY_SHORT_ID_3}\""
-      sid_pool2="${sid_pool2}]"
+  # Check for required TLS certificates
+  if [[ ! -f "${XRAY_CERT_DIR}/fullchain.pem" || ! -f "${XRAY_CERT_DIR}/privkey.pem" ]]; then
+    core::log error "vision-reality requires TLS certificates" "$(printf '{"cert_dir":"%s","suggestion":"Use: --plugins cert-auto"}' \
+      "${XRAY_CERT_DIR}")"
+    exit 2
+  fi
 
-      core::log debug "generating vision-reality config" "$(printf '{"release_dir":"%s","server_names":"%s"}' "${d}" "${sn2}")"
+  [[ -n "${XRAY_PRIVATE_KEY}" ]] || {
+    core::log error "XRAY_PRIVATE_KEY required"
+    exit 2
+  }
 
-      cat > "${d}/05_inbounds.json" << JSON
+  # Prepare configuration values
+  local reality_dest server_names shortids_pool
+  reality_dest="$(ensure_reality_dest "${XRAY_REALITY_DEST:-}" "${XRAY_SNI}")"
+  server_names="$(json_array_from_csv "${XRAY_SNI}")"
+  shortids_pool="$(build_shortids_pool "${XRAY_SHORT_ID}" "${XRAY_SHORT_ID_2:-}" "${XRAY_SHORT_ID_3:-}")"
+
+  # Write dual inbound configuration
+  cat > "${release_dir}/05_inbounds.json" << JSON
 {"inbounds":[
 {"tag":"vision","listen":"0.0.0.0","port":${XRAY_VISION_PORT},"protocol":"vless",
  "settings":{"clients":[{"id":"${XRAY_UUID_VISION}","flow":"xtls-rprx-vision"}],"decryption":"none","fallbacks":[{"alpn":"h2","dest":${XRAY_FALLBACK_PORT}},{"dest":${XRAY_FALLBACK_PORT}}]},
@@ -117,11 +154,61 @@ JSON
  "sniffing":{"enabled":${sniff_bool},"destOverride":["http","tls"]}},
 {"tag":"reality","listen":"0.0.0.0","port":${XRAY_REALITY_PORT},"protocol":"vless",
  "settings":{"clients":[{"id":"${XRAY_UUID_REALITY}","flow":"xtls-rprx-vision"}],"decryption":"none"},
- "streamSettings":{"network":"tcp","security":"reality","realitySettings":{"show":false,"dest":"${XRAY_REALITY_DEST}","xver":0,"serverNames":${sn2},"privateKey":"${XRAY_PRIVATE_KEY}","shortIds":${sid_pool2},"spiderX":"/"}},
+ "streamSettings":{"network":"tcp","security":"reality","realitySettings":{"show":false,"dest":"${reality_dest}","xver":0,"serverNames":${server_names},"privateKey":"${XRAY_PRIVATE_KEY}","shortIds":${shortids_pool},"spiderX":"/"}},
  "sniffing":{"enabled":${sniff_bool},"destOverride":["http","tls","quic"]}}]}
 JSON
 
-      core::log debug "vision-reality inbound config written" "$(printf '{"file":"%s/05_inbounds.json"}' "${d}")"
+  core::log debug "vision-reality inbounds config written" "$(printf '{"vision_port":%d,"reality_port":%d}' \
+    "${XRAY_VISION_PORT}" "${XRAY_REALITY_PORT}")"
+}
+
+# Set permissions for configuration directory and files
+xray::set_config_permissions() {
+  local release_dir="${1}"
+
+  core::log debug "setting permissions" "$(printf '{"dir":"%s"}' "${release_dir}")"
+
+  chmod 0750 "${release_dir}" || true
+  chown root:xray "${release_dir}" 2> /dev/null || true
+
+  for f in "${release_dir}"/*.json; do
+    [[ -f "${f}" ]] || continue
+    chown root:xray "${f}" 2> /dev/null || true
+    chmod 0640 "${f}" || true
+    core::log debug "config file permissions set" "$(printf '{"file":"%s"}' "${f}")"
+  done
+}
+
+# Main function: Orchestrate Xray configuration rendering
+render_release() {
+  local topology="${1}"
+
+  # Step 1: Prepare release directory
+  local d
+  d="$(xray::prepare_release_dir)"
+  core::log debug "release directory created" "$(printf '{"dir":"%s"}' "${d}")"
+
+  # Step 2: Initialize plugin system and emit pre-configure hooks
+  : "${XRAY_LOG_LEVEL:=warning}"
+  : "${XRAY_SNIFFING:=false}"
+  plugins::ensure_dirs
+  plugins::load_enabled
+  plugins::emit configure_pre "topology=${topology}" "release_dir=${d}"
+
+  # Step 3: Write base configuration files
+  xray::write_base_configs "${d}"
+
+  # Step 4: Determine sniffing mode
+  local sniff_bool
+  sniff_bool=$([[ "${XRAY_SNIFFING}" == "true" ]] && echo true || echo false)
+
+  # Step 5: Render topology-specific inbound configuration
+  case "${topology}" in
+    reality-only)
+      xray::render_reality_inbound "${d}" "${sniff_bool}"
+      ;;
+    vision-reality)
+      xray::render_vision_reality_inbounds "${d}" "${sniff_bool}"
       ;;
     *)
       core::log error "unknown topology" "$(printf '{"topology":"%s"}' "${topology}")"
@@ -129,29 +216,15 @@ JSON
       ;;
   esac
 
-  core::log debug "writing routing config" "$(printf '{"file":"%s/09_routing.json"}' "${d}")"
+  # Step 6: Set permissions on config directory and files
+  xray::set_config_permissions "${d}"
 
-  printf '{"routing":{"domainStrategy":"IPIfNonMatch","rules":[]}}' | io::atomic_write "${d}/09_routing.json" 0640
-  core::log debug "routing config written" "$(printf '{"file":"%s/09_routing.json"}' "${d}")"
-
-  core::log debug "setting permissions" "$(printf '{"release_dir":"%s"}' "${d}")"
-  chmod 0750 "${d}" || true
-  chown root:xray "${d}" 2> /dev/null || true
-  for f in "${d}"/*.json; do
-    chown root:xray "${f}" 2> /dev/null || true
-    chmod 0640 "${f}" || true
-  done
-
-  core::log debug "listing generated config files" "{}"
-  for f in "${d}"/*.json; do
-    [[ -f "${f}" ]] && core::log debug "config file" "$(printf '{"file":"%s"}' "${f}")"
-  done
-
+  # Step 7: Emit post-configure hooks
   core::log debug "emitting configure_post" "$(printf '{"topology":"%s","release_dir":"%s"}' "${topology}" "${d}")"
   plugins::emit configure_post "topology=${topology}" "release_dir=${d}"
 
+  # Step 8: Return release directory path to stdout
   core::log debug "render_release complete" "$(printf '{"release_dir":"%s"}' "${d}")"
-  # 确保输出目录路径到 stdout，而不是 stderr
   printf '%s\n' "${d}"
 }
 
