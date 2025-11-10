@@ -329,3 +329,67 @@ teardown() {
   run validators::shortid "ab cd"
   [ "$status" -ne 0 ]
 }
+
+# Security tests - RFC 3927 link-local addresses
+@test "validators::domain - rejects RFC 3927 link-local start (169.254.0.1)" {
+  run validators::domain "169.254.0.1"
+  [ "$status" -ne 0 ]
+}
+
+@test "validators::domain - rejects RFC 3927 link-local end (169.254.255.255)" {
+  run validators::domain "169.254.255.255"
+  [ "$status" -ne 0 ]
+}
+
+@test "validators::domain - rejects RFC 3927 link-local mid-range" {
+  run validators::domain "169.254.100.50"
+  [ "$status" -ne 0 ]
+}
+
+# Security tests - RFC 6761 special-use domain names
+@test "validators::domain - rejects RFC 6761 .test TLD" {
+  run validators::domain "example.test"
+  [ "$status" -ne 0 ]
+}
+
+@test "validators::domain - rejects RFC 6761 .invalid TLD" {
+  run validators::domain "domain.invalid"
+  [ "$status" -ne 0 ]
+}
+
+@test "validators::domain - rejects RFC 6761 subdomain.test" {
+  run validators::domain "sub.example.test"
+  [ "$status" -ne 0 ]
+}
+
+# Security tests - IPv6 private addresses
+@test "validators::domain - rejects IPv6 loopback (::1)" {
+  run validators::domain "::1"
+  [ "$status" -ne 0 ]
+}
+
+@test "validators::domain - rejects IPv6 unique local fc00::" {
+  run validators::domain "fc00::1"
+  [ "$status" -ne 0 ]
+}
+
+@test "validators::domain - rejects IPv6 unique local fd00::" {
+  run validators::domain "fd00::1"
+  [ "$status" -ne 0 ]
+}
+
+@test "validators::domain - rejects IPv6 link-local fe80::" {
+  run validators::domain "fe80::1"
+  [ "$status" -ne 0 ]
+}
+
+# Positive tests - ensure we don't over-reject
+@test "validators::domain - accepts valid public domain" {
+  run validators::domain "www.google.com"
+  [ "$status" -eq 0 ]
+}
+
+@test "validators::domain - accepts domain with numbers" {
+  run validators::domain "server123.example.com"
+  [ "$status" -eq 0 ]
+}
