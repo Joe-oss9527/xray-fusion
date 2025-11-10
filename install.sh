@@ -34,6 +34,91 @@ log_warn() { echo -e "${YELLOW}[WARN]${NC} ${*}"; }
 log_error() { echo -e "${RED}[ERROR]${NC} ${*}"; }
 log_debug() { [[ "${DEBUG}" == "true" ]] && echo -e "${BLUE}[DEBUG]${NC} ${*}" || true; }
 
+##
+# Log installation step with progress indicator
+#
+# Displays a step counter [N/M] followed by the step description.
+# Uses BLUE color for the progress indicator.
+#
+# Arguments:
+#   $1 - Current step number
+#   $2 - Total steps
+#   $3 - Step description
+#
+# Example:
+#   log_step 1 7 "检查运行环境"
+#   # Output: [1/7] 检查运行环境
+##
+log_step() {
+  local current="${1}"
+  local total="${2}"
+  local desc="${3}"
+  echo -e "${BLUE}[${current}/${total}]${NC} ${desc}"
+}
+
+##
+# Log sub-step with indentation and status icon
+#
+# Displays a sub-step with 2-space indentation and a status icon:
+# - • (bullet, default): in progress or neutral status
+# - ✓ (checkmark): success
+# - ✗ (cross): error
+#
+# Arguments:
+#   $1 - Sub-step description
+#   $2 - Status icon (optional): •, ✓, ✗, or text aliases (success, error)
+#
+# Example:
+#   log_substep "ROOT 权限" "✓"
+#   log_substep "检查中..." "•"
+#   log_substep "失败" "error"
+##
+log_substep() {
+  local desc="${1}"
+  local icon="${2:-•}"
+
+  case "${icon}" in
+    success | ✓) echo -e "  ${GREEN}✓${NC} ${desc}" ;;
+    error | ✗) echo -e "  ${RED}✗${NC} ${desc}" ;;
+    *) echo -e "  ${BLUE}•${NC} ${desc}" ;;
+  esac
+}
+
+##
+# Show spinner animation for long-running tasks
+#
+# Displays a rotating spinner with a description. This function runs
+# in an infinite loop and should be started in background. Kill the
+# process when the task completes.
+#
+# The spinner is skipped when DEBUG mode is enabled to avoid interfering
+# with debug output.
+#
+# Arguments:
+#   $1 - Task description to show next to spinner
+#
+# Globals:
+#   DEBUG - If "true", spinner is not shown
+#
+# Example:
+#   show_spinner "正在下载..." &
+#   SPINNER_PID=$!
+#   long_running_command
+#   kill ${SPINNER_PID} 2>/dev/null
+#   printf "\r"  # Clear spinner line
+##
+show_spinner() {
+  local desc="${1}"
+  local chars="⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+  local i=0
+
+  while true; do
+    printf "\r  ${BLUE}${chars:$i:1}${NC} %s" "${desc}"
+    i=$(((i + 1) % ${#chars}))
+    sleep 0.1
+  done
+}
+
 # Error handling
 error_exit() {
   log_error "${1}"
@@ -46,6 +131,97 @@ cleanup() {
 }
 
 trap cleanup EXIT
+
+# Retry function with exponential backoff
+retry_command() {
+  local max_retries="${1}"
+  local initial_delay="${2}"
+  shift 2
+  local attempt=0
+  local delay="${initial_delay}"
+
+  while [[ ${attempt} -lt ${max_retries} ]]; do
+    attempt=$((attempt + 1))
+    log_debug "尝试 ${attempt}/${max_retries}: $*"
+
+    if "$@"; then
+      log_debug "命令成功 (尝试 ${attempt})"
+      return 0
+    fi
+
+    if [[ ${attempt} -lt ${max_retries} ]]; then
+      log_warn "命令失败，${delay}秒后重试..."
+      sleep "${delay}"
+      delay=$((delay * 2)) # Exponential backoff
+    fi
+  done
+
+  log_error "命令失败，已重试 ${max_retries} 次"
+  return 1
+}
+
+# Check critical dependencies (embedded for early fail-fast)
+check_dependencies() {
+  log_info "检查核心依赖..."
+
+  local missing=()
+
+  # Check downloader availability (need at least one)
+  local has_downloader=false
+  for tool in git curl wget; do
+    if command -v "${tool}" > /dev/null 2>&1; then
+      has_downloader=true
+      log_debug "找到下载工具: ${tool}"
+      break
+    fi
+  done
+
+  if [[ "${has_downloader}" == "false" ]]; then
+    log_error "需要至少一个下载工具: git, curl, 或 wget"
+    missing+=("git 或 curl 或 wget")
+  fi
+
+  # Check basic utilities
+  for tool in mktemp tar gzip; do
+    if ! command -v "${tool}" > /dev/null 2>&1; then
+      log_warn "缺少工具: ${tool}"
+      missing+=("${tool}")
+    fi
+  done
+
+  # Fail if any critical tool is missing
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    log_error "缺少关键依赖: ${missing[*]}"
+    echo ""
+    echo "请根据您的系统安装缺少的工具："
+    echo ""
+    echo "# Debian/Ubuntu"
+    echo "sudo apt-get update && sudo apt-get install -y git curl wget tar gzip"
+    echo ""
+    echo "# CentOS/RHEL/Rocky"
+    echo "sudo yum install -y git curl wget tar gzip"
+    echo ""
+    echo "# Arch Linux"
+    echo "sudo pacman -S git curl wget tar gzip"
+    echo ""
+    return 1
+  fi
+
+  # Check optional tools (warn but don't fail)
+  local optional_missing=()
+  for tool in jq openssl gpg; do
+    if ! command -v "${tool}" > /dev/null 2>&1; then
+      optional_missing+=("${tool}")
+    fi
+  done
+
+  if [[ ${#optional_missing[@]} -gt 0 ]]; then
+    log_warn "可选工具缺失（功能可能受限）: ${optional_missing[*]}"
+  fi
+
+  log_info "依赖检查通过"
+  return 0
+}
 
 # Load unified argument parsing (embedded for installation)
 source_args_module() {
@@ -347,15 +523,124 @@ download_project() {
     log_info "使用代理: ${PROXY}"
   fi
 
-  # Clone repository with better error handling
-  log_debug "开始克隆仓库..."
-  if ! git clone --depth 1 --branch "${BRANCH}" "${REPO_URL}" "${TMP_DIR}/xray-fusion" 2> /dev/null; then
-    log_error "从 ${REPO_URL} 下载失败"
+  # Download with automatic fallback (git → tarball)
+  log_debug "开始下载..."
+
+  # Try git clone first (preferred) with retry
+  local download_success=false
+  if command -v git > /dev/null 2>&1; then
+    log_debug "尝试 git clone（最多重试 3 次）..."
+    if retry_command 3 2 git clone --depth 1 --branch "${BRANCH}" "${REPO_URL}" "${TMP_DIR}/xray-fusion"; then
+      log_debug "git clone 成功"
+      download_success=true
+    else
+      log_warn "git clone 失败，尝试 tarball 下载..."
+    fi
+  else
+    log_debug "git 不可用，使用 tarball 下载"
+  fi
+
+  # Fallback to tarball if git failed
+  if [[ "${download_success}" == "false" ]]; then
+    local tarball_url="${REPO_URL%.git}/archive/refs/heads/${BRANCH}.tar.gz"
+    local tarball="${TMP_DIR}/archive.tar.gz"
+
+    log_debug "下载 tarball: ${tarball_url}"
+
+    # Try curl first with retry
+    if command -v curl > /dev/null 2>&1; then
+      if retry_command 3 2 curl -fsSL --connect-timeout 10 --max-time 300 "${tarball_url}" -o "${tarball}"; then
+        log_debug "tarball 下载成功 (curl)"
+        download_success=true
+      else
+        log_warn "curl 下载失败（已重试）"
+        rm -f "${tarball}"
+      fi
+    fi
+
+    # Fallback to wget with retry
+    if [[ "${download_success}" == "false" ]] && command -v wget > /dev/null 2>&1; then
+      if retry_command 3 2 wget -q --timeout=10 "${tarball_url}" -O "${tarball}"; then
+        log_debug "tarball 下载成功 (wget)"
+        download_success=true
+      else
+        log_warn "wget 下载失败（已重试）"
+        rm -f "${tarball}"
+      fi
+    fi
+
+    # Extract tarball if downloaded
+    if [[ "${download_success}" == "true" ]]; then
+      log_debug "解压 tarball..."
+      if tar -xzf "${tarball}" -C "${TMP_DIR}" 2> /dev/null; then
+        # Rename extracted directory
+        mv "${TMP_DIR}/xray-fusion-${BRANCH}" "${TMP_DIR}/xray-fusion" 2> /dev/null \
+          || mv "${TMP_DIR}"/xray-fusion-* "${TMP_DIR}/xray-fusion" 2> /dev/null
+        rm -f "${tarball}"
+      else
+        log_error "tarball 解压失败"
+        rm -f "${tarball}"
+        download_success=false
+      fi
+    fi
+  fi
+
+  # Check final result
+  if [[ "${download_success}" == "false" ]]; then
+    log_error "所有下载方式均失败 (git/curl/wget)"
     log_info "请检查网络连接或尝试使用代理"
     error_exit "下载失败"
   fi
 
-  # Verify download
+  # === NEW: Verify download integrity ===
+
+  # Source download verification module if available
+  if [[ -f "${TMP_DIR}/xray-fusion/lib/download.sh" ]]; then
+    # Need core.sh for logging
+    if [[ -f "${TMP_DIR}/xray-fusion/lib/core.sh" ]]; then
+      source "${TMP_DIR}/xray-fusion/lib/core.sh"
+    fi
+    source "${TMP_DIR}/xray-fusion/lib/download.sh"
+  fi
+
+  # 1. Get actual commit hash
+  local actual_commit=""
+  if [[ -d "${TMP_DIR}/xray-fusion/.git" ]]; then
+    actual_commit=$(git -C "${TMP_DIR}/xray-fusion" rev-parse HEAD 2> /dev/null || true)
+    if [[ -n "${actual_commit}" ]]; then
+      log_debug "下载的 commit: ${actual_commit}"
+    fi
+  fi
+
+  # 2. Verify against expected commit (if provided)
+  if [[ -n "${XRF_EXPECTED_COMMIT:-}" && -n "${actual_commit}" ]]; then
+    log_info "验证下载完整性..."
+    if [[ "${actual_commit,,}" != "${XRF_EXPECTED_COMMIT,,}" ]]; then
+      log_error "下载完整性验证失败：commit hash 不匹配"
+      log_error "期望: ${XRF_EXPECTED_COMMIT}"
+      log_error "实际: ${actual_commit}"
+      error_exit "完整性验证失败（可能的中间人攻击）"
+    fi
+    log_info "✓ Commit 验证通过"
+  else
+    if [[ -n "${actual_commit}" ]]; then
+      log_debug "跳过 commit 验证（未指定 XRF_EXPECTED_COMMIT）"
+      log_debug "要启用验证，请设置: export XRF_EXPECTED_COMMIT='${actual_commit}'"
+    fi
+  fi
+
+  # 3. Verify GPG signature (optional)
+  if [[ -d "${TMP_DIR}/xray-fusion/.git" ]] && command -v gpg > /dev/null 2>&1; then
+    if git -C "${TMP_DIR}/xray-fusion" verify-commit HEAD 2> /dev/null; then
+      log_info "✓ GPG 签名验证通过"
+    else
+      log_debug "GPG 签名验证失败或 commit 未签名（可选验证）"
+    fi
+  fi
+
+  # === END: Verification ===
+
+  # Verify download completeness
   if [[ ! -d "${TMP_DIR}/xray-fusion" ]] || [[ ! -f "${TMP_DIR}/xray-fusion/bin/xrf" ]]; then
     error_exit "下载的文件不完整或损坏"
   fi
@@ -533,21 +818,74 @@ EOF
 
   parse_args "${@}"
 
-  # Run early checks first
+  # === Step 1: Dependency check (fail-fast) ===
+  log_step 1 7 "检查核心依赖"
+  check_dependencies || error_exit "依赖检查失败，无法继续安装"
+  log_substep "下载工具可用" "✓"
+  log_substep "系统工具就绪" "✓"
+
+  # === Step 2: Environment checks ===
+  log_step 2 7 "检查运行环境"
   early_checks
+  log_substep "ROOT 权限" "✓"
+  log_substep "systemd 可用" "✓"
+  log_substep "架构支持 ($(uname -m))" "✓"
 
   # Setup environment from parsed arguments
   setup_environment
 
-  # Continue with installation steps
+  # === Step 3: Configuration validation ===
+  log_step 3 7 "验证配置参数"
+  log_substep "拓扑: ${TOPOLOGY}" "✓"
+  [[ -n "${DOMAIN}" ]] && log_substep "域名: ${DOMAIN}" "✓"
+  log_substep "版本: ${VERSION}" "✓"
+
+  # === Step 4: System compatibility check ===
+  log_step 4 7 "检查系统兼容性"
   check_system
+  log_substep "操作系统兼容" "✓"
+
+  # === Step 5: Install system dependencies ===
+  log_step 5 7 "安装必需依赖包"
   install_dependencies
+
+  # === Step 6: Download project ===
+  log_step 6 7 "下载 xray-fusion"
+  log_substep "仓库: ${REPO_URL##*/}"
+  log_substep "分支: ${BRANCH}"
+
+  # Show spinner during download (skip in debug mode)
+  if [[ "${DEBUG}" != "true" ]]; then
+    show_spinner "正在下载..." &
+    SPINNER_PID=$!
+    trap 'kill ${SPINNER_PID} 2>/dev/null || true' EXIT INT TERM
+  fi
+
   download_project
+
+  # Stop spinner if it was started
+  if [[ -n "${SPINNER_PID:-}" ]]; then
+    kill ${SPINNER_PID} 2> /dev/null || true
+    wait ${SPINNER_PID} 2> /dev/null || true
+    printf "\r"
+    unset SPINNER_PID
+  fi
+
+  log_substep "下载完成" "✓"
+
+  # === Step 7: Install and configure ===
+  log_step 7 7 "安装并配置 Xray"
   install_xray_fusion
+  log_substep "文件安装完成" "✓"
+
   run_xray_install
+  log_substep "服务启动成功" "✓"
+
+  echo ""
   show_summary
 
-  log_info "安装完成！"
+  echo ""
+  log_info "🎉 安装完成！"
 }
 
 # Run main function with all arguments

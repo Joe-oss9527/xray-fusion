@@ -21,6 +21,10 @@ setup_test_env() {
   export XRF_PREFIX="${TEST_TMPDIR}/usr/local"
   export XRF_ETC="${TEST_TMPDIR}/etc"
   export XRF_VAR="${TEST_TMPDIR}/var/lib/xray-fusion"
+
+  # Set default values for core environment variables
+  export XRF_DEBUG="${XRF_DEBUG:-false}"
+  export XRF_JSON="${XRF_JSON:-false}"
 }
 
 cleanup_test_env() {
