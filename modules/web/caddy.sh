@@ -2,6 +2,12 @@
 # Caddy 自动 TLS 管理模块
 # 参考 233boy/Xray 实现
 
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck source=lib/core.sh
+. "${HERE}/lib/core.sh"
+# shellcheck source=lib/validators.sh
+. "${HERE}/lib/validators.sh"
+
 caddy::bin() { echo "/usr/local/bin/caddy"; }
 caddy::config_dir() { echo "/usr/local/etc/caddy"; }
 caddy::config_file() { echo "$(caddy::config_dir)/Caddyfile"; }
@@ -101,7 +107,7 @@ caddy::setup_auto_tls() {
   # Validate port numbers (1-65535)
   for port_info in "${caddy_http_port}:CADDY_HTTP_PORT" "${caddy_https_port}:CADDY_HTTPS_PORT" "${caddy_fallback_port}:CADDY_FALLBACK_PORT"; do
     local port="${port_info%%:*}" name="${port_info#*:}"
-    if ! [[ "${port}" =~ ^[0-9]+$ ]] || [[ "${port}" -lt 1 ]] || [[ "${port}" -gt 65535 ]]; then
+    if ! validators::port "${port}"; then
       core::log error "invalid port number" "$(printf '{"port":"%s","name":"%s","valid_range":"1-65535"}' "${port}" "${name}")"
       return 1
     fi
