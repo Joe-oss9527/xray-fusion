@@ -266,9 +266,9 @@ deploy_release() {
 
   # Security: Validate directory path to prevent injection attacks
   # Reject: parent references (..), consecutive slashes (//), invalid characters
-  if [[ ! "${release_dir}" =~ ^/([a-zA-Z0-9_-]+/)*[a-zA-Z0-9_-]+$ ]] || \
-     [[ "${release_dir}" == *".."* ]] || \
-     [[ "${release_dir}" == *"//"* ]]; then
+  if [[ ! "${release_dir}" =~ ^/([a-zA-Z0-9_-]+/)*[a-zA-Z0-9_-]+$ ]] \
+    || [[ "${release_dir}" == *".."* ]] \
+    || [[ "${release_dir}" == *"//"* ]]; then
     core::log error "invalid directory path" "$(printf '{"path":"%s","reason":"path validation failed"}' "${release_dir//\"/\\\"}")"
     return "${ERR_INVALID_ARG}"
   fi

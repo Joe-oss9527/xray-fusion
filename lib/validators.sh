@@ -104,9 +104,9 @@ validators::domain() {
   # - ::1 (loopback)
   # - fc00::/7 and fd00::/8 (unique local addresses - RFC 4193)
   # - fe80::/10 (link-local - RFC 4291)
-  if [[ "${domain}" =~ ^::1$ ]] || \
-     [[ "${domain}" =~ ^[fF][cCdD][0-9a-fA-F]{2}: ]] || \
-     [[ "${domain}" =~ ^[fF][eE]80: ]]; then
+  if [[ "${domain}" =~ ^::1$ ]] \
+    || [[ "${domain}" =~ ^[fF][cCdD][0-9a-fA-F]{2}: ]] \
+    || [[ "${domain}" =~ ^[fF][eE]80: ]]; then
     core::log debug "domain validation failed: IPv6 private/link-local" "$(printf '{"domain":"%s"}' "${domain}")"
     return 1
   fi

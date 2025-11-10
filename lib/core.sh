@@ -125,7 +125,7 @@ core::log() {
   # Normalize fatal/critical to uppercase for visibility in text output
   local display_lvl="${lvl}"
   if [[ "${lvl}" == "fatal" || "${lvl}" == "critical" ]]; then
-    display_lvl="${lvl^^}"  # Convert to uppercase
+    display_lvl="${lvl^^}" # Convert to uppercase
   fi
 
   # All logs go to stderr to avoid contaminating function outputs

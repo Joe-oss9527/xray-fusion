@@ -20,8 +20,8 @@ LOCK_DIR="$(dirname "${LOCK_FILE}")"
 
 # Create lock directory
 if ! test -d "${LOCK_DIR}"; then
-  if ! mkdir -p "${LOCK_DIR}" 2>/dev/null; then
-    if command -v sudo >/dev/null 2>&1; then
+  if ! mkdir -p "${LOCK_DIR}" 2> /dev/null; then
+    if command -v sudo > /dev/null 2>&1; then
       sudo mkdir -p "${LOCK_DIR}" || {
         printf '[%s] %-5s [caddy-cert-sync] failed to create lock directory\n' \
           "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "error" >&2
@@ -36,19 +36,19 @@ if ! test -d "${LOCK_DIR}"; then
 fi
 
 # Atomic lock file creation (prevents TOCTOU - CWE-362)
-if ! test -f "${LOCK_FILE}" 2>/dev/null; then
+if ! test -f "${LOCK_FILE}" 2> /dev/null; then
   # Use install(1) for atomic creation with correct ownership
-  if ! install -m 0644 -o "$(id -u)" -g "$(id -g)" /dev/null "${LOCK_FILE}" 2>/dev/null; then
+  if ! install -m 0644 -o "$(id -u)" -g "$(id -g)" /dev/null "${LOCK_FILE}" 2> /dev/null; then
     # Fallback to sudo
-    if command -v sudo >/dev/null 2>&1; then
-      sudo install -m 0644 -o "$(id -u)" -g "$(id -g)" /dev/null "${LOCK_FILE}" 2>/dev/null || {
+    if command -v sudo > /dev/null 2>&1; then
+      sudo install -m 0644 -o "$(id -u)" -g "$(id -g)" /dev/null "${LOCK_FILE}" 2> /dev/null || {
         printf '[%s] %-5s [caddy-cert-sync] failed to create lock file\n' \
           "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "error" >&2
         exit 1
       }
     else
       # Last resort: create with touch (may have wrong ownership)
-      touch "${LOCK_FILE}" 2>/dev/null || {
+      touch "${LOCK_FILE}" 2> /dev/null || {
         printf '[%s] %-5s [caddy-cert-sync] cannot create lock file\n' \
           "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "error" >&2
         exit 1
@@ -57,15 +57,15 @@ if ! test -f "${LOCK_FILE}" 2>/dev/null; then
   fi
 else
   # Lock file exists, fix ownership (handles previous root runs - CWE-283)
-  if ! chown "$(id -u):$(id -g)" "${LOCK_FILE}" 2>/dev/null; then
-    if command -v sudo >/dev/null 2>&1; then
-      sudo chown "$(id -u):$(id -g)" "${LOCK_FILE}" 2>/dev/null || true
+  if ! chown "$(id -u):$(id -g)" "${LOCK_FILE}" 2> /dev/null; then
+    if command -v sudo > /dev/null 2>&1; then
+      sudo chown "$(id -u):$(id -g)" "${LOCK_FILE}" 2> /dev/null || true
     fi
   fi
   # Fix permissions
-  if ! chmod 0644 "${LOCK_FILE}" 2>/dev/null; then
-    if command -v sudo >/dev/null 2>&1; then
-      sudo chmod 0644 "${LOCK_FILE}" 2>/dev/null || true
+  if ! chmod 0644 "${LOCK_FILE}" 2> /dev/null; then
+    if command -v sudo > /dev/null 2>&1; then
+      sudo chmod 0644 "${LOCK_FILE}" 2> /dev/null || true
     fi
   fi
 fi

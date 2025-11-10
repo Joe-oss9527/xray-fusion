@@ -6,24 +6,24 @@
 readonly ERR_SUCCESS=0
 
 # === General Errors (1-9) ===
-readonly ERR_GENERAL=1          # General failure
-readonly ERR_INVALID_ARG=2      # Invalid argument
-readonly ERR_NOT_FOUND=3        # Resource not found
-readonly ERR_PERMISSION=4       # Permission denied
-readonly ERR_CONFIG=5           # Configuration error
-readonly ERR_NETWORK=6          # Network error
-readonly ERR_TIMEOUT=7          # Operation timeout
+readonly ERR_GENERAL=1     # General failure
+readonly ERR_INVALID_ARG=2 # Invalid argument
+readonly ERR_NOT_FOUND=3   # Resource not found
+readonly ERR_PERMISSION=4  # Permission denied
+readonly ERR_CONFIG=5      # Configuration error
+readonly ERR_NETWORK=6     # Network error
+readonly ERR_TIMEOUT=7     # Operation timeout
 
 # === Special Return Codes (10-19) ===
-readonly ERR_HELP_REQUESTED=10  # --help flag (not an error)
+readonly ERR_HELP_REQUESTED=10 # --help flag (not an error)
 
 # === Validation Errors (20-29) ===
-readonly ERR_INVALID_DOMAIN=20     # Domain validation failed
-readonly ERR_INVALID_PORT=21       # Port validation failed
-readonly ERR_INVALID_UUID=22       # UUID validation failed
-readonly ERR_INVALID_SHORTID=23    # shortId validation failed
-readonly ERR_INVALID_VERSION=24    # Version validation failed
-readonly ERR_INVALID_TOPOLOGY=25   # Topology validation failed
+readonly ERR_INVALID_DOMAIN=20   # Domain validation failed
+readonly ERR_INVALID_PORT=21     # Port validation failed
+readonly ERR_INVALID_UUID=22     # UUID validation failed
+readonly ERR_INVALID_SHORTID=23  # shortId validation failed
+readonly ERR_INVALID_VERSION=24  # Version validation failed
+readonly ERR_INVALID_TOPOLOGY=25 # Topology validation failed
 
 # === Plugin Errors (30-39) ===
 readonly ERR_PLUGIN_NOT_FOUND=30   # Plugin does not exist
