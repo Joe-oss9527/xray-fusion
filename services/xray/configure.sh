@@ -68,16 +68,16 @@ xray::write_base_configs() {
   local log_level="${XRAY_LOG_LEVEL:-warning}"
 
   # Logging configuration
-  printf '{"log":{"access":"none","error":"none","loglevel":"%s"}}' "${log_level}" |
-    io::atomic_write "${release_dir}/00_log.json" 0640
+  printf '{"log":{"access":"none","error":"none","loglevel":"%s"}}' "${log_level}" \
+    | io::atomic_write "${release_dir}/00_log.json" 0640
 
   # Outbounds configuration
-  printf '{"outbounds":[{"protocol":"freedom","tag":"direct"},{"protocol":"blackhole","tag":"block"}]}' |
-    io::atomic_write "${release_dir}/06_outbounds.json" 0640
+  printf '{"outbounds":[{"protocol":"freedom","tag":"direct"},{"protocol":"blackhole","tag":"block"}]}' \
+    | io::atomic_write "${release_dir}/06_outbounds.json" 0640
 
   # Routing configuration
-  printf '{"routing":{"domainStrategy":"IPIfNonMatch","rules":[]}}' |
-    io::atomic_write "${release_dir}/09_routing.json" 0640
+  printf '{"routing":{"domainStrategy":"IPIfNonMatch","rules":[]}}' \
+    | io::atomic_write "${release_dir}/09_routing.json" 0640
 
   core::log debug "base configs written" "$(printf '{"dir":"%s"}' "${release_dir}")"
 }
