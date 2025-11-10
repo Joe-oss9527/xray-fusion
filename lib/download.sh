@@ -48,7 +48,7 @@ download::verify_commit() {
 
   # Get actual commit hash
   local actual_hash
-  if ! actual_hash="$(git -C "${repo_path}" rev-parse HEAD 2>/dev/null)"; then
+  if ! actual_hash="$(git -C "${repo_path}" rev-parse HEAD 2> /dev/null)"; then
     core::log error "failed to get commit hash" "$(printf '{"path":"%s"}' "${repo_path}")"
     return 1
   fi
@@ -103,13 +103,13 @@ download::verify_gpg_signature() {
   fi
 
   # Check if GPG is available
-  if ! command -v gpg >/dev/null 2>&1; then
+  if ! command -v gpg > /dev/null 2>&1; then
     core::log warn "gpg not available, skipping signature verification" '{}'
-    return 0  # Graceful degradation
+    return 0 # Graceful degradation
   fi
 
   # Verify commit signature
-  if git -C "${repo_path}" verify-commit HEAD 2>/dev/null; then
+  if git -C "${repo_path}" verify-commit HEAD 2> /dev/null; then
     core::log info "GPG signature verified" '{}'
     return 0
   else
@@ -155,9 +155,9 @@ download::via_tarball() {
   local download_success=false
 
   # Try curl first
-  if command -v curl >/dev/null 2>&1; then
+  if command -v curl > /dev/null 2>&1; then
     core::log debug "attempting download via curl" "$(printf '{"url":"%s"}' "${url}")"
-    if curl -fsSL --connect-timeout 10 --max-time 300 "${url}" -o "${tarball}" 2>/dev/null; then
+    if curl -fsSL --connect-timeout 10 --max-time 300 "${url}" -o "${tarball}" 2> /dev/null; then
       core::log debug "download successful via curl" '{}'
       download_success=true
     else
@@ -167,9 +167,9 @@ download::via_tarball() {
   fi
 
   # Fallback to wget if curl failed or unavailable
-  if [[ "${download_success}" == "false" ]] && command -v wget >/dev/null 2>&1; then
+  if [[ "${download_success}" == "false" ]] && command -v wget > /dev/null 2>&1; then
     core::log debug "attempting download via wget" "$(printf '{"url":"%s"}' "${url}")"
-    if wget -q --timeout=10 "${url}" -O "${tarball}" 2>/dev/null; then
+    if wget -q --timeout=10 "${url}" -O "${tarball}" 2> /dev/null; then
       core::log debug "download successful via wget" '{}'
       download_success=true
     else
@@ -186,7 +186,7 @@ download::via_tarball() {
 
   # Extract tarball
   core::log debug "extracting tarball" '{}'
-  if ! tar -xzf "${tarball}" -C "${dest_dir}" 2>/dev/null; then
+  if ! tar -xzf "${tarball}" -C "${dest_dir}" 2> /dev/null; then
     core::log error "failed to extract tarball" '{}'
     rm -f "${tarball}"
     return 1
@@ -243,9 +243,9 @@ download::with_fallback() {
   fi
 
   # Method 1: Git clone (preferred)
-  if command -v git >/dev/null 2>&1; then
+  if command -v git > /dev/null 2>&1; then
     core::log debug "attempting git clone" "$(printf '{"url":"%s","branch":"%s"}' "${repo_url}" "${branch}")"
-    if git clone --depth 1 --branch "${branch}" "${repo_url}" "${dest_dir}/xray-fusion" 2>/dev/null; then
+    if git clone --depth 1 --branch "${branch}" "${repo_url}" "${dest_dir}/xray-fusion" 2> /dev/null; then
       core::log info "git clone successful" '{}'
       return 0
     else

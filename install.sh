@@ -347,10 +347,71 @@ download_project() {
     log_info "使用代理: ${PROXY}"
   fi
 
-  # Clone repository with better error handling
-  log_debug "开始克隆仓库..."
-  if ! git clone --depth 1 --branch "${BRANCH}" "${REPO_URL}" "${TMP_DIR}/xray-fusion" 2> /dev/null; then
-    log_error "从 ${REPO_URL} 下载失败"
+  # Download with automatic fallback (git → tarball)
+  log_debug "开始下载..."
+
+  # Try git clone first (preferred)
+  local download_success=false
+  if command -v git > /dev/null 2>&1; then
+    log_debug "尝试 git clone..."
+    if git clone --depth 1 --branch "${BRANCH}" "${REPO_URL}" "${TMP_DIR}/xray-fusion" 2> /dev/null; then
+      log_debug "git clone 成功"
+      download_success=true
+    else
+      log_warn "git clone 失败，尝试 tarball 下载..."
+    fi
+  else
+    log_debug "git 不可用，使用 tarball 下载"
+  fi
+
+  # Fallback to tarball if git failed
+  if [[ "${download_success}" == "false" ]]; then
+    local tarball_url="${REPO_URL%.git}/archive/refs/heads/${BRANCH}.tar.gz"
+    local tarball="${TMP_DIR}/archive.tar.gz"
+
+    log_debug "下载 tarball: ${tarball_url}"
+
+    # Try curl first
+    if command -v curl > /dev/null 2>&1; then
+      if curl -fsSL --connect-timeout 10 --max-time 300 "${tarball_url}" -o "${tarball}" 2> /dev/null; then
+        log_debug "tarball 下载成功 (curl)"
+        download_success=true
+      else
+        log_warn "curl 下载失败"
+        rm -f "${tarball}"
+      fi
+    fi
+
+    # Fallback to wget
+    if [[ "${download_success}" == "false" ]] && command -v wget > /dev/null 2>&1; then
+      if wget -q --timeout=10 "${tarball_url}" -O "${tarball}" 2> /dev/null; then
+        log_debug "tarball 下载成功 (wget)"
+        download_success=true
+      else
+        log_warn "wget 下载失败"
+        rm -f "${tarball}"
+      fi
+    fi
+
+    # Extract tarball if downloaded
+    if [[ "${download_success}" == "true" ]]; then
+      log_debug "解压 tarball..."
+      if tar -xzf "${tarball}" -C "${TMP_DIR}" 2> /dev/null; then
+        # Rename extracted directory
+        mv "${TMP_DIR}/xray-fusion-${BRANCH}" "${TMP_DIR}/xray-fusion" 2> /dev/null \
+          || mv "${TMP_DIR}"/xray-fusion-* "${TMP_DIR}/xray-fusion" 2> /dev/null
+        rm -f "${tarball}"
+      else
+        log_error "tarball 解压失败"
+        rm -f "${tarball}"
+        download_success=false
+      fi
+    fi
+  fi
+
+  # Check final result
+  if [[ "${download_success}" == "false" ]]; then
+    log_error "所有下载方式均失败 (git/curl/wget)"
     log_info "请检查网络连接或尝试使用代理"
     error_exit "下载失败"
   fi
