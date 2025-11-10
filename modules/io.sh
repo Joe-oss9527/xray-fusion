@@ -28,42 +28,30 @@ io::atomic_write() {
   # Use hidden prefix to prevent conflicts and mktemp XXXXXX for unpredictability
   tmp="$(mktemp -p "${dstdir}" .atomic-write.XXXXXX.tmp)" || return 1
 
-  # Save existing traps to restore later (preserve caller's cleanup handlers)
-  local old_trap_exit old_trap_int old_trap_term
-  old_trap_exit="$(trap -p EXIT)"
-  old_trap_int="$(trap -p INT)"
-  old_trap_term="$(trap -p TERM)"
+  # Write content to temp file
+  if ! cat > "${tmp}"; then
+    rm -f "${tmp}" 2>/dev/null || true
+    return 1
+  fi
 
-  # Install temporary cleanup trap
-  trap 'rm -f "${tmp}" 2>/dev/null || true' EXIT INT TERM
-
-  cat > "${tmp}"
-
+  # Move to final location
   if io::writable "${dstdir}"; then
-    mv -f "${tmp}" "${dst}"
+    if ! mv -f "${tmp}" "${dst}"; then
+      rm -f "${tmp}" 2>/dev/null || true
+      return 1
+    fi
     chmod "${mode}" "${dst}" || true
   else
     core::log warn "write needs sudo" "$(printf '{"file":"%s"}' "${dst}")"
-    sudo mv -f "${tmp}" "${dst}"
+    if ! sudo mv -f "${tmp}" "${dst}"; then
+      rm -f "${tmp}" 2>/dev/null || true
+      return 1
+    fi
     sudo chmod "${mode}" "${dst}" || true
   fi
 
-  # Restore previous traps (don't clobber caller's cleanup handlers)
-  if [[ -n "${old_trap_exit}" ]]; then
-    eval "${old_trap_exit}"
-  else
-    trap - EXIT
-  fi
-  if [[ -n "${old_trap_int}" ]]; then
-    eval "${old_trap_int}"
-  else
-    trap - INT
-  fi
-  if [[ -n "${old_trap_term}" ]]; then
-    eval "${old_trap_term}"
-  else
-    trap - TERM
-  fi
+  # Success - temp file has been moved
+  return 0
 }
 
 io::install_file() {
