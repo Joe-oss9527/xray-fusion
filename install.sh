@@ -75,6 +75,69 @@ retry_command() {
   return 1
 }
 
+# Check critical dependencies (embedded for early fail-fast)
+check_dependencies() {
+  log_info "检查核心依赖..."
+
+  local missing=()
+
+  # Check downloader availability (need at least one)
+  local has_downloader=false
+  for tool in git curl wget; do
+    if command -v "${tool}" > /dev/null 2>&1; then
+      has_downloader=true
+      log_debug "找到下载工具: ${tool}"
+      break
+    fi
+  done
+
+  if [[ "${has_downloader}" == "false" ]]; then
+    log_error "需要至少一个下载工具: git, curl, 或 wget"
+    missing+=("git 或 curl 或 wget")
+  fi
+
+  # Check basic utilities
+  for tool in mktemp tar gzip; do
+    if ! command -v "${tool}" > /dev/null 2>&1; then
+      log_warn "缺少工具: ${tool}"
+      missing+=("${tool}")
+    fi
+  done
+
+  # Fail if any critical tool is missing
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    log_error "缺少关键依赖: ${missing[*]}"
+    echo ""
+    echo "请根据您的系统安装缺少的工具："
+    echo ""
+    echo "# Debian/Ubuntu"
+    echo "sudo apt-get update && sudo apt-get install -y git curl wget tar gzip"
+    echo ""
+    echo "# CentOS/RHEL/Rocky"
+    echo "sudo yum install -y git curl wget tar gzip"
+    echo ""
+    echo "# Arch Linux"
+    echo "sudo pacman -S git curl wget tar gzip"
+    echo ""
+    return 1
+  fi
+
+  # Check optional tools (warn but don't fail)
+  local optional_missing=()
+  for tool in jq openssl gpg; do
+    if ! command -v "${tool}" > /dev/null 2>&1; then
+      optional_missing+=("${tool}")
+    fi
+  done
+
+  if [[ ${#optional_missing[@]} -gt 0 ]]; then
+    log_warn "可选工具缺失（功能可能受限）: ${optional_missing[*]}"
+  fi
+
+  log_info "依赖检查通过"
+  return 0
+}
+
 # Load unified argument parsing (embedded for installation)
 source_args_module() {
   # Create temporary args module for installation
@@ -669,6 +732,9 @@ EOF
   source_args_module
 
   parse_args "${@}"
+
+  # Check dependencies early (fail-fast before downloads)
+  check_dependencies || error_exit "依赖检查失败，无法继续安装"
 
   # Run early checks first
   early_checks
