@@ -47,6 +47,34 @@ cleanup() {
 
 trap cleanup EXIT
 
+# Retry function with exponential backoff
+retry_command() {
+  local max_retries="${1}"
+  local initial_delay="${2}"
+  shift 2
+  local attempt=0
+  local delay="${initial_delay}"
+
+  while [[ ${attempt} -lt ${max_retries} ]]; do
+    attempt=$((attempt + 1))
+    log_debug "尝试 ${attempt}/${max_retries}: $*"
+
+    if "$@"; then
+      log_debug "命令成功 (尝试 ${attempt})"
+      return 0
+    fi
+
+    if [[ ${attempt} -lt ${max_retries} ]]; then
+      log_warn "命令失败，${delay}秒后重试..."
+      sleep "${delay}"
+      delay=$((delay * 2)) # Exponential backoff
+    fi
+  done
+
+  log_error "命令失败，已重试 ${max_retries} 次"
+  return 1
+}
+
 # Load unified argument parsing (embedded for installation)
 source_args_module() {
   # Create temporary args module for installation
@@ -350,11 +378,11 @@ download_project() {
   # Download with automatic fallback (git → tarball)
   log_debug "开始下载..."
 
-  # Try git clone first (preferred)
+  # Try git clone first (preferred) with retry
   local download_success=false
   if command -v git > /dev/null 2>&1; then
-    log_debug "尝试 git clone..."
-    if git clone --depth 1 --branch "${BRANCH}" "${REPO_URL}" "${TMP_DIR}/xray-fusion" 2> /dev/null; then
+    log_debug "尝试 git clone（最多重试 3 次）..."
+    if retry_command 3 2 git clone --depth 1 --branch "${BRANCH}" "${REPO_URL}" "${TMP_DIR}/xray-fusion"; then
       log_debug "git clone 成功"
       download_success=true
     else
@@ -371,24 +399,24 @@ download_project() {
 
     log_debug "下载 tarball: ${tarball_url}"
 
-    # Try curl first
+    # Try curl first with retry
     if command -v curl > /dev/null 2>&1; then
-      if curl -fsSL --connect-timeout 10 --max-time 300 "${tarball_url}" -o "${tarball}" 2> /dev/null; then
+      if retry_command 3 2 curl -fsSL --connect-timeout 10 --max-time 300 "${tarball_url}" -o "${tarball}"; then
         log_debug "tarball 下载成功 (curl)"
         download_success=true
       else
-        log_warn "curl 下载失败"
+        log_warn "curl 下载失败（已重试）"
         rm -f "${tarball}"
       fi
     fi
 
-    # Fallback to wget
+    # Fallback to wget with retry
     if [[ "${download_success}" == "false" ]] && command -v wget > /dev/null 2>&1; then
-      if wget -q --timeout=10 "${tarball_url}" -O "${tarball}" 2> /dev/null; then
+      if retry_command 3 2 wget -q --timeout=10 "${tarball_url}" -O "${tarball}"; then
         log_debug "tarball 下载成功 (wget)"
         download_success=true
       else
-        log_warn "wget 下载失败"
+        log_warn "wget 下载失败（已重试）"
         rm -f "${tarball}"
       fi
     fi
