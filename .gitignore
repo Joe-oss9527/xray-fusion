@@ -1,0 +1,27 @@
+# Auto-managed plugin symlinks
+plugins/enabled/
+
+# Runtime state files
+*.lock
+.backup.*
+.atomic-write.*.tmp
+.sync.*
+
+# Test artifacts
+tests/tmp/
+*.bats.log
+
+# Editor and IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Claude Code configuration (user-specific)
+.claude/
+
+# Temporary files
+*.tmp
+tmp/

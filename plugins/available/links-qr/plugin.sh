@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034  # Plugin metadata variables are used by the plugin system
 XRF_PLUGIN_ID="links-qr"
-XRF_PLUGIN_VERSION="1.1.0"
-XRF_PLUGIN_DESC="Render QR codes for client links (requires qrencode)"
+XRF_PLUGIN_VERSION="1.2.0"
+XRF_PLUGIN_DESC="Render QR codes for client links"
 XRF_PLUGIN_HOOKS=("links_render")
+XRF_PLUGIN_DEPS=("qrencode")
 
 HERE="${HERE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
 . "${HERE}/lib/core.sh"
@@ -20,10 +21,10 @@ links_qr::links_render() {
   done
 
   # Check if qrencode is available
-  command -v qrencode > /dev/null 2>&1 || {
-    core::log debug "qrencode not found, skipping QR generation"
+  if ! command -v qrencode > /dev/null 2>&1; then
+    core::log warn "qrencode not found, skipping QR generation" '{"hint":"run: xrf plugin enable links-qr"}'
     return 0
-  }
+  fi
 
   # Validate link
   if [[ -z "${link}" ]]; then

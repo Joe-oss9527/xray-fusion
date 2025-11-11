@@ -138,6 +138,30 @@ plugins::enable() {
     return 2
   fi
 
+  # Load plugin metadata to check dependencies
+  local project_root
+  project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  # shellcheck disable=SC1090
+  if HERE="${project_root}" . "${src}" 2> /dev/null; then
+    # Check if plugin declares dependencies
+    if [[ -n "${XRF_PLUGIN_DEPS:-}" ]]; then
+      # Load dependencies library if available
+      if [[ -f "${project_root}/lib/dependencies.sh" ]]; then
+        # shellcheck disable=SC1091
+        . "${project_root}/lib/dependencies.sh"
+
+        # Check and install dependencies
+        if declare -f deps::check_and_install_plugin_deps > /dev/null 2>&1; then
+          if ! deps::check_and_install_plugin_deps "${id}" "${XRF_PLUGIN_DEPS[@]}"; then
+            echo "warning: plugin dependencies not satisfied, but plugin will be enabled" >&2
+          fi
+        fi
+      fi
+    fi
+    # Clear plugin variables
+    unset XRF_PLUGIN_ID XRF_PLUGIN_VERSION XRF_PLUGIN_DESC XRF_PLUGIN_HOOKS XRF_PLUGIN_DEPS
+  fi
+
   ln -sfn "../available/${id}/plugin.sh" "${dst}"
   echo "enabled: ${id}"
 }

@@ -782,11 +782,59 @@ timeout 3 bash -c "</dev/tcp/1.2.3.4/443" && echo "Reality accessible"
   - Screenshots or logs if behavior changes
   - Linked issues (if any)
 
-## Plugin Tips
-- Add new plugin at `plugins/available/<id>/plugin.sh` with metadata:
-  - `XRF_PLUGIN_ID`, `XRF_PLUGIN_VERSION`, `XRF_PLUGIN_DESC`, `XRF_PLUGIN_HOOKS`.
-- Supported hooks include: `configure_pre|configure_post|deploy_post|service_setup|service_remove|links_render|uninstall_pre`.
-- Validate IDs with `plugins::validate_id`; never traverse paths; use repo helpers.
+## Plugin System
+
+### Plugin Metadata
+Add new plugin at `plugins/available/<id>/plugin.sh` with metadata:
+- `XRF_PLUGIN_ID` - Unique plugin identifier (required)
+- `XRF_PLUGIN_VERSION` - Semantic version (required)
+- `XRF_PLUGIN_DESC` - Human-readable description (required)
+- `XRF_PLUGIN_HOOKS` - Array of hook names (required)
+- `XRF_PLUGIN_DEPS` - Array of command dependencies (optional)
+
+Supported hooks: `configure_pre|configure_post|deploy_post|service_setup|service_remove|links_render|uninstall_pre`
+
+### Plugin Dependencies
+**Feature**: Automatic dependency installation (v1.2.0+)
+
+Plugins can declare dependencies using `XRF_PLUGIN_DEPS` array. When a plugin is enabled, the system will:
+1. Check if all dependencies are installed
+2. Prompt user to install missing dependencies (interactive mode)
+3. Auto-install in non-interactive mode or when `XRF_AUTO_INSTALL_DEPS=true`
+
+```bash
+# Plugin metadata example
+XRF_PLUGIN_ID="links-qr"
+XRF_PLUGIN_VERSION="1.2.0"
+XRF_PLUGIN_DESC="Render QR codes for client links"
+XRF_PLUGIN_HOOKS=("links_render")
+XRF_PLUGIN_DEPS=("qrencode")  # Auto-install qrencode when enabling plugin
+```
+
+**Behavior**:
+```bash
+# Interactive mode - prompts user
+xrf plugin enable links-qr
+# Output:
+# [INFO] Plugin links-qr requires: qrencode
+# Install missing dependencies? [Y/n] y
+# [INFO] Installing packages: qrencode (using yum)
+# [INFO] Packages installed successfully: qrencode
+# enabled: links-qr
+
+# Non-interactive mode - auto-installs
+XRF_AUTO_INSTALL_DEPS=true xrf plugin enable links-qr
+
+# CI/CD environments - auto-detects non-interactive
+echo | xrf plugin enable links-qr  # Auto-installs without prompt
+```
+
+**Supported package managers**: apt-get, yum, dnf, apk, zypper, pacman
+
+### Plugin Security
+- Validate IDs with `plugins::validate_id`; never traverse paths
+- Use repo helpers for path resolution
+- Plugin dependencies are installed via system package manager with sudo fallback
 
 ---
 

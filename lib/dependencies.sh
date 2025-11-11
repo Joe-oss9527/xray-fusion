@@ -190,3 +190,225 @@ deps::print_install_help() {
 
   return 0
 }
+
+##
+# Detect available package manager
+#
+# Detects the system's package manager by checking for common package
+# management tools. Returns the name of the first available package manager.
+#
+# Supported package managers:
+# - apt-get (Debian/Ubuntu)
+# - yum (CentOS/RHEL)
+# - dnf (Fedora/RHEL 8+)
+# - apk (Alpine)
+# - zypper (openSUSE)
+# - pacman (Arch Linux)
+#
+# Output:
+#   Package manager name (apt-get, yum, dnf, apk, zypper, or pacman) to stdout
+#
+# Returns:
+#   0 - Package manager detected
+#   1 - No supported package manager found
+#
+# Example:
+#   pm=$(deps::detect_package_manager) && echo "Using: ${pm}"
+##
+deps::detect_package_manager() {
+  local managers=("apt-get" "dnf" "yum" "apk" "zypper" "pacman")
+
+  for pm in "${managers[@]}"; do
+    if command -v "${pm}" > /dev/null 2>&1; then
+      echo "${pm}"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+##
+# Install packages using system package manager
+#
+# Automatically detects the system package manager and installs the specified
+# packages. Handles privilege escalation (sudo) when needed. Runs non-interactively
+# to avoid prompts.
+#
+# Arguments:
+#   $@ - List of package names to install
+#
+# Globals:
+#   Uses core::log if available for structured logging
+#
+# Returns:
+#   0 - All packages installed successfully
+#   1 - Package manager not detected or installation failed
+#
+# Example:
+#   deps::install_packages qrencode curl
+##
+deps::install_packages() {
+  local packages=("$@")
+
+  if [[ ${#packages[@]} -eq 0 ]]; then
+    if declare -f core::log > /dev/null 2>&1; then
+      core::log warn "no packages specified for installation" '{}'
+    fi
+    return 0
+  fi
+
+  # Detect package manager
+  local pm
+  if ! pm=$(deps::detect_package_manager); then
+    if declare -f core::log > /dev/null 2>&1; then
+      core::log error "no supported package manager found" '{}'
+    else
+      printf '[ERROR] No supported package manager found\n' >&2
+    fi
+    return 1
+  fi
+
+  if declare -f core::log > /dev/null 2>&1; then
+    core::log info "installing packages" "$(printf '{"packages":"%s","manager":"%s"}' "${packages[*]}" "${pm}")"
+  else
+    printf '[INFO] Installing packages: %s (using %s)\n' "${packages[*]}" "${pm}" >&2
+  fi
+
+  # Prepare installation command
+  local cmd=()
+  local need_sudo=false
+
+  # Check if we need sudo
+  if [[ "${EUID}" -ne 0 ]] && command -v sudo > /dev/null 2>&1; then
+    need_sudo=true
+  fi
+
+  # Build command based on package manager
+  case "${pm}" in
+    apt-get)
+      [[ "${need_sudo}" == "true" ]] && cmd+=(sudo)
+      cmd+=(apt-get install -y "${packages[@]}")
+      ;;
+    yum)
+      [[ "${need_sudo}" == "true" ]] && cmd+=(sudo)
+      cmd+=(yum install -y "${packages[@]}")
+      ;;
+    dnf)
+      [[ "${need_sudo}" == "true" ]] && cmd+=(sudo)
+      cmd+=(dnf install -y "${packages[@]}")
+      ;;
+    apk)
+      [[ "${need_sudo}" == "true" ]] && cmd+=(sudo)
+      cmd+=(apk add --no-cache "${packages[@]}")
+      ;;
+    zypper)
+      [[ "${need_sudo}" == "true" ]] && cmd+=(sudo)
+      cmd+=(zypper install -y "${packages[@]}")
+      ;;
+    pacman)
+      [[ "${need_sudo}" == "true" ]] && cmd+=(sudo)
+      cmd+=(pacman -S --noconfirm "${packages[@]}")
+      ;;
+    *)
+      if declare -f core::log > /dev/null 2>&1; then
+        core::log error "unsupported package manager" "$(printf '{"manager":"%s"}' "${pm}")"
+      fi
+      return 1
+      ;;
+  esac
+
+  # Execute installation
+  # Keep stderr visible for sudo password prompts and error messages
+  # Only redirect stdout to hide verbose package manager output
+  if "${cmd[@]}" > /dev/null; then
+    if declare -f core::log > /dev/null 2>&1; then
+      core::log info "packages installed successfully" "$(printf '{"packages":"%s"}' "${packages[*]}")"
+    else
+      printf '[INFO] Packages installed successfully: %s\n' "${packages[*]}" >&2
+    fi
+    return 0
+  else
+    if declare -f core::log > /dev/null 2>&1; then
+      core::log error "package installation failed" "$(printf '{"packages":"%s","rc":"%s"}' "${packages[*]}" "$?")"
+    else
+      printf '[ERROR] Package installation failed: %s\n' "${packages[*]}" >&2
+    fi
+    return 1
+  fi
+}
+
+##
+# Check and install plugin dependencies
+#
+# Checks if plugin dependencies are installed. If any are missing, prompts
+# user and installs them automatically.
+#
+# Arguments:
+#   $1 - Plugin ID (for logging)
+#   $@ - List of command names to check (e.g., qrencode, curl)
+#
+# Returns:
+#   0 - All dependencies satisfied (already installed or successfully installed)
+#   1 - Dependencies missing and installation failed/declined
+#
+# Example:
+#   deps::check_and_install_plugin_deps "links-qr" qrencode
+##
+deps::check_and_install_plugin_deps() {
+  local plugin_id="${1}"
+  shift
+  local deps=("$@")
+
+  if [[ ${#deps[@]} -eq 0 ]]; then
+    return 0
+  fi
+
+  # Check which dependencies are missing
+  local missing=()
+  for dep in "${deps[@]}"; do
+    if ! command -v "${dep}" > /dev/null 2>&1; then
+      missing+=("${dep}")
+    fi
+  done
+
+  # All dependencies satisfied
+  if [[ ${#missing[@]} -eq 0 ]]; then
+    if declare -f core::log > /dev/null 2>&1; then
+      core::log debug "all plugin dependencies satisfied" "$(printf '{"plugin":"%s","deps":"%s"}' "${plugin_id}" "${deps[*]}")"
+    fi
+    return 0
+  fi
+
+  # Dependencies missing - prompt user for installation
+  if declare -f core::log > /dev/null 2>&1; then
+    core::log info "plugin has missing dependencies" "$(printf '{"plugin":"%s","missing":"%s"}' "${plugin_id}" "${missing[*]}")"
+  else
+    printf '[INFO] Plugin %s requires: %s\n' "${plugin_id}" "${missing[*]}" >&2
+  fi
+
+  # Auto-install in non-interactive mode or when XRF_AUTO_INSTALL_DEPS=true
+  local auto_install=false
+  if [[ "${XRF_AUTO_INSTALL_DEPS:-false}" == "true" ]] || [[ ! -t 0 ]]; then
+    auto_install=true
+  else
+    # Interactive prompt
+    printf 'Install missing dependencies? [Y/n] ' >&2
+    read -r response
+    if [[ "${response}" =~ ^([Yy]|)$ ]]; then
+      auto_install=true
+    fi
+  fi
+
+  if [[ "${auto_install}" == "true" ]]; then
+    deps::install_packages "${missing[@]}"
+    return $?
+  else
+    if declare -f core::log > /dev/null 2>&1; then
+      core::log warn "plugin dependencies not installed" "$(printf '{"plugin":"%s","missing":"%s"}' "${plugin_id}" "${missing[*]}")"
+    else
+      printf '[WARN] Plugin dependencies not installed: %s\n' "${missing[*]}" >&2
+    fi
+    return 1
+  fi
+}
