@@ -4,6 +4,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 . "${HERE}/lib/core.sh"
 . "${HERE}/lib/defaults.sh"
 . "${HERE}/lib/args.sh"
+. "${HERE}/lib/uuid.sh"
 . "${HERE}/lib/plugins.sh"
 . "${HERE}/modules/state.sh"
 . "${HERE}/services/xray/common.sh"
@@ -67,14 +68,38 @@ main() {
   plugins::emit install_pre "topology=${TOPOLOGY}" "version=${VERSION}"
   "${HERE}/services/xray/install.sh" --version "${VERSION}"
 
+  # Generate or use provided UUIDs
+  local generated_uuid=""
+  if [[ -n "${UUID_FROM_STRING:-}" ]]; then
+    # Custom UUID from string (requires xray binary)
+    core::log debug "generating UUID from custom string" "$(printf '{"input":"%s"}' "${UUID_FROM_STRING}")"
+    generated_uuid="$(uuid::from_string "${UUID_FROM_STRING}" "$(xray::bin)")" || {
+      core::log error "failed to generate UUID from string" "$(printf '{"input":"%s","suggestion":"ensure xray is installed"}' "${UUID_FROM_STRING}")"
+      exit 1
+    }
+  elif [[ -n "${UUID:-}" ]]; then
+    # User-provided UUID
+    if ! uuid::validate "${UUID}"; then
+      core::log error "invalid UUID format" "$(printf '{"uuid":"%s","format":"8-4-4-4-12 hex digits"}' "${UUID}")"
+      exit 1
+    fi
+    generated_uuid="${UUID}"
+  fi
+
   if [[ "${TOPOLOGY}" == "vision-reality" ]]; then
     core::log debug "configuring vision-reality topology" "$(printf '{"XRAY_DOMAIN":"%s"}' "${XRAY_DOMAIN:-unset}")"
     : "${XRAY_VISION_PORT:=${DEFAULT_XRAY_VISION_PORT}}" : "${XRAY_REALITY_PORT:=${DEFAULT_XRAY_REALITY_PORT}}" : "${XRAY_CERT_DIR:=${DEFAULT_XRAY_CERT_DIR}}" : "${XRAY_FALLBACK_PORT:=${DEFAULT_XRAY_FALLBACK_PORT}}"
-    if [[ -z "${XRAY_UUID_VISION:-}" ]]; then XRAY_UUID_VISION="$("$(xray::bin)" uuid 2> /dev/null || uuidgen)"; fi
-    if [[ -z "${XRAY_UUID_REALITY:-}" ]]; then XRAY_UUID_REALITY="$("$(xray::bin)" uuid 2> /dev/null || uuidgen)"; fi
+    if [[ -z "${XRAY_UUID_VISION:-}" ]]; then
+      XRAY_UUID_VISION="${generated_uuid:-$(uuid::generate "$(xray::bin)")}"
+    fi
+    if [[ -z "${XRAY_UUID_REALITY:-}" ]]; then
+      XRAY_UUID_REALITY="$(uuid::generate "$(xray::bin)")"
+    fi
   else
     : "${XRAY_PORT:=${DEFAULT_XRAY_PORT}}"
-    if [[ -z "${XRAY_UUID:-}" ]]; then XRAY_UUID="$("$(xray::bin)" uuid 2> /dev/null || uuidgen)"; fi
+    if [[ -z "${XRAY_UUID:-}" ]]; then
+      XRAY_UUID="${generated_uuid:-$(uuid::generate "$(xray::bin)")}"
+    fi
   fi
   : "${XRAY_SNI:=${DEFAULT_XRAY_SNI}}"
   if [[ -z "${XRAY_REALITY_DEST:-}" ]]; then

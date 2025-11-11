@@ -16,6 +16,8 @@ args::init() {
   VERSION="${DEFAULT_VERSION}"
   PLUGINS=""
   DEBUG="${DEFAULT_XRF_DEBUG}"
+  UUID=""
+  UUID_FROM_STRING=""
 }
 
 # Parse command line arguments
@@ -41,6 +43,14 @@ args::parse() {
         PLUGINS="${2:-}"
         shift 2
         ;;
+      --uuid)
+        UUID="${2:-}"
+        shift 2
+        ;;
+      --uuid-from-string)
+        UUID_FROM_STRING="${2:-}"
+        shift 2
+        ;;
       --debug)
         DEBUG="true"
         shift
@@ -62,8 +72,14 @@ args::parse() {
   # Validate configuration
   args::validate_config || return 1
 
+  # Validate UUID parameters if provided
+  if [[ -n "${UUID}" && -n "${UUID_FROM_STRING}" ]]; then
+    core::log error "cannot use both --uuid and --uuid-from-string" "{}"
+    return 1
+  fi
+
   # Export variables for use by other modules
-  export TOPOLOGY DOMAIN VERSION PLUGINS DEBUG
+  export TOPOLOGY DOMAIN VERSION PLUGINS DEBUG UUID UUID_FROM_STRING
 
   return 0
 }

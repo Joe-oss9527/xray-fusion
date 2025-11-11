@@ -69,6 +69,8 @@ bin/xrf install [参数]
 --domain <domain>                       # 域名（vision-reality 模式必需）
 --version <version>                     # Xray 版本（默认：latest）
 --plugins <plugin1,plugin2>             # 启用插件列表，逗号分隔
+--uuid <uuid>                           # 自定义 UUID（可选，默认自动生成）
+--uuid-from-string <string>             # 从字符串生成 UUID（可选，便于记忆）
 --debug                                 # 调试模式
 ```
 
@@ -85,6 +87,12 @@ curl -sL install.sh | bash -s -- --topology vision-reality --domain example.com 
 
 # 指定版本的完整安装
 curl -sL install.sh | bash -s -- --topology vision-reality --domain example.com --version v1.8.0 --plugins cert-auto,firewall
+
+# 使用自定义 UUID
+curl -sL install.sh | bash -s -- --topology reality-only --uuid 6ba85179-d64e-4cb8-901f-bfb8e9e7d5f1
+
+# 从字符串生成 UUID（便于记忆，每次相同）
+curl -sL install.sh | bash -s -- --topology reality-only --uuid-from-string "alice"
 ```
 
 ## 插件系统
