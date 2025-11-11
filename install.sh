@@ -540,6 +540,9 @@ install_dependencies() {
     fi
   done
 
+  # Trim leading space
+  missing_deps="${missing_deps# }"
+
   # Install missing dependencies
   if [[ -n "${missing_deps}" ]]; then
     log_info "安装缺少的依赖包:${missing_deps}"
