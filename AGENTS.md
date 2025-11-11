@@ -334,6 +334,49 @@ function_without_trap() {
 
 **Reference**: See `modules/io.sh::atomic_write()` for production implementation
 
+### Source Guard for Libraries with Readonly Variables
+
+**Critical**: Libraries that define readonly variables MUST use source guards to prevent "readonly variable" errors when sourced multiple times.
+
+```bash
+# ❌ Wrong: No source guard - fails on second source
+# lib/defaults.sh
+readonly DEFAULT_TOPOLOGY="reality-only"
+readonly DEFAULT_VERSION="latest"
+
+# commands/install.sh sources twice via chain:
+. lib/defaults.sh        # First source - OK
+. lib/args.sh           # Second source via lib/args.sh - ERROR!
+  └─ . lib/defaults.sh  # "DEFAULT_TOPOLOGY: readonly variable"
+
+# ✅ Correct: Add idempotent source guard
+# lib/defaults.sh
+[[ -n "${_XRF_DEFAULTS_LOADED:-}" ]] && return 0
+readonly _XRF_DEFAULTS_LOADED=1
+
+readonly DEFAULT_TOPOLOGY="reality-only"
+readonly DEFAULT_VERSION="latest"
+```
+
+**Why this pattern is needed**:
+- Bash doesn't prevent multiple sourcing of the same file
+- `readonly` variables cannot be reassigned (even to same value)
+- Complex projects often have transitive sourcing chains
+- Source guard makes libraries idempotent and safe to source multiple times
+
+**Best practices**:
+- Use library-specific guard variable (e.g., `_XRF_DEFAULTS_LOADED`)
+- Check guard at top of file before any readonly declarations
+- Make guard itself readonly to prevent accidental modification
+- Use early return (`return 0`) to skip re-sourcing
+
+**Common scenarios requiring source guards**:
+1. Libraries with readonly constants (defaults, config values)
+2. Shared utilities sourced by multiple scripts
+3. Hierarchical sourcing (A sources B, C sources both A and B)
+
+**Reference**: Fixed in commit 3904ccb (2025-11-11)
+
 ### Variable Pollution Defense
 ```bash
 # ❌ Wrong: Directly sourcing external files may pollute variables

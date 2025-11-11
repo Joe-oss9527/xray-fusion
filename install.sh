@@ -129,8 +129,8 @@ error_exit() {
 cleanup() {
   # Stop spinner if running
   if [[ -n "${SPINNER_PID:-}" ]]; then
-    kill "${SPINNER_PID}" 2>/dev/null || true
-    wait "${SPINNER_PID}" 2>/dev/null || true
+    kill "${SPINNER_PID}" 2> /dev/null || true
+    wait "${SPINNER_PID}" 2> /dev/null || true
   fi
   # Clean up temp directory
   [[ -n "${TMP_DIR:-}" && -d "${TMP_DIR}" ]] && rm -rf "${TMP_DIR}"
