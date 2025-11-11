@@ -20,6 +20,8 @@ args::init() {
   DEBUG="${DEFAULT_XRF_DEBUG}"
   UUID=""
   UUID_FROM_STRING=""
+  XRF_YES="false"
+  XRF_DRY_RUN="false"
 }
 
 # Parse command line arguments
@@ -57,6 +59,14 @@ args::parse() {
         DEBUG="true"
         shift
         ;;
+      --yes | -y)
+        XRF_YES="true"
+        shift
+        ;;
+      --dry-run)
+        XRF_DRY_RUN="true"
+        shift
+        ;;
       --help | -h)
         return 10 # Special return code for help
         ;;
@@ -81,7 +91,7 @@ args::parse() {
   fi
 
   # Export variables for use by other modules
-  export TOPOLOGY DOMAIN VERSION PLUGINS DEBUG UUID UUID_FROM_STRING
+  export TOPOLOGY DOMAIN VERSION PLUGINS DEBUG UUID UUID_FROM_STRING XRF_YES XRF_DRY_RUN
 
   return 0
 }
@@ -180,6 +190,10 @@ Options:
   --domain, -d <domain>         Domain for vision-reality topology (required)
   --version, -v <version>       Xray version to install (default: latest)
   --plugins, -p <list>          Comma-separated list of plugins to enable
+  --uuid <uuid>                 Custom UUID (default: auto-generated)
+  --uuid-from-string <string>   Generate UUID from custom string
+  --yes, -y                     Auto-confirm installation (skip prompt)
+  --dry-run                     Show preview without installing
   --debug                       Enable debug output
   --help, -h                    Show this help
 
@@ -189,6 +203,12 @@ Examples:
 
   # Vision-Reality with domain and plugins
   --topology vision-reality --domain your.domain.com --plugins cert-auto
+
+  # Preview without installing
+  --topology reality-only --dry-run
+
+  # Auto-confirm installation
+  --topology reality-only --yes
 
   # Specific version
   --version v1.8.1

@@ -5,6 +5,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 . "${HERE}/lib/defaults.sh"
 . "${HERE}/lib/args.sh"
 . "${HERE}/lib/uuid.sh"
+. "${HERE}/lib/preview.sh"
 . "${HERE}/lib/plugins.sh"
 . "${HERE}/modules/state.sh"
 . "${HERE}/services/xray/common.sh"
@@ -63,6 +64,21 @@ main() {
     done
     # Reload enabled plugins after enabling new ones
     plugins::load_enabled
+  fi
+
+  # Show installation preview
+  preview::show
+
+  # Check for dry-run mode (exit after preview)
+  if preview::is_dry_run; then
+    core::log info "dry-run mode, skipping installation" "{}"
+    exit 0
+  fi
+
+  # Request user confirmation (unless --yes flag)
+  if ! preview::confirm; then
+    core::log info "installation cancelled" "{}"
+    exit 1
   fi
 
   plugins::emit install_pre "topology=${TOPOLOGY}" "version=${VERSION}"
