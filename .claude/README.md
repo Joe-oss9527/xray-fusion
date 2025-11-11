@@ -30,12 +30,17 @@ Hooks are defined in `.claude/settings.json` following the [official documentati
 
 ### What it Does
 
-The SessionStart hook automatically installs:
+The SessionStart hook automatically installs development tools in **web/iOS environments only**:
 
 - **shfmt v3.8.0** - Shell script formatter
 - **shellcheck v0.10.0** - Shell script linter
+- **bats-core v1.11.0** - Bash Automated Testing System
 
-These tools are installed to `~/.local/bin/` and only downloaded if not already present.
+**Environment Detection**:
+- **Web/iOS** (`CLAUDE_CODE_REMOTE=true`): Auto-install tools to `~/.local/bin/`
+- **Desktop** (`CLAUDE_CODE_REMOTE=false` or unset): Skip auto-install, show manual installation instructions
+
+These tools are installed to `~/.local/bin/` (and `~/.local/share/bats-core/` for bats) and only downloaded if not already present.
 
 ### File Structure
 
