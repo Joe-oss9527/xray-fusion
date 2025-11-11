@@ -127,6 +127,12 @@ error_exit() {
 }
 
 cleanup() {
+  # Stop spinner if running
+  if [[ -n "${SPINNER_PID:-}" ]]; then
+    kill "${SPINNER_PID}" 2>/dev/null || true
+    wait "${SPINNER_PID}" 2>/dev/null || true
+  fi
+  # Clean up temp directory
   [[ -n "${TMP_DIR:-}" && -d "${TMP_DIR}" ]] && rm -rf "${TMP_DIR}"
 }
 
@@ -913,7 +919,6 @@ EOF
   if [[ "${DEBUG}" != "true" ]]; then
     show_spinner "正在下载..." &
     SPINNER_PID=$!
-    trap 'kill ${SPINNER_PID} 2>/dev/null || true' EXIT INT TERM
   fi
 
   download_project

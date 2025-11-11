@@ -5,6 +5,10 @@
 
 # shellcheck disable=SC2034  # Variables used via indirect expansion in defaults::get()
 
+# Source guard: prevent double-sourcing (readonly variables cannot be re-declared)
+[[ -n "${_XRF_DEFAULTS_LOADED:-}" ]] && return 0
+readonly _XRF_DEFAULTS_LOADED=1
+
 # === Topology Defaults ===
 readonly DEFAULT_TOPOLOGY="reality-only"
 
