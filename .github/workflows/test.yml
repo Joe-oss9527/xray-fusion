@@ -3,8 +3,24 @@ name: Tests
 on:
   push:
     branches: [ main, develop, 'claude/**' ]
+    # Path filtering: Skip tests for documentation-only changes
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.editorconfig'
   pull_request:
     branches: [ main, develop ]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+
+# Concurrency: Cancel in-progress runs when new commits are pushed
+# This prevents redundant CI runs and saves GitHub Actions minutes
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 # Default GITHUB_TOKEN permissions (minimal permissions for security)
 # Increase permissions only when specific jobs require it
