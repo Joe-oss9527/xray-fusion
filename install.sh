@@ -549,14 +549,17 @@ install_dependencies() {
     case "${pkg_manager}" in
       apt)
         apt-get update -qq || log_warn "apt-get update 失败，继续安装..."
-        apt-get install -y "${missing_deps}" || error_exit "依赖包安装失败"
+        # shellcheck disable=SC2086
+        apt-get install -y ${missing_deps} || error_exit "依赖包安装失败"
         ;;
       yum)
         yum install -y epel-release || log_warn "epel-release 安装失败，继续..."
-        yum install -y "${missing_deps}" || error_exit "依赖包安装失败"
+        # shellcheck disable=SC2086
+        yum install -y ${missing_deps} || error_exit "依赖包安装失败"
         ;;
       dnf)
-        dnf install -y "${missing_deps}" || error_exit "依赖包安装失败"
+        # shellcheck disable=SC2086
+        dnf install -y ${missing_deps} || error_exit "依赖包安装失败"
         ;;
       *)
         error_exit "不支持的包管理器: ${pkg_manager}"
