@@ -6,13 +6,19 @@ on:
   pull_request:
     branches: [ main, develop ]
 
+# Default GITHUB_TOKEN permissions (read-only for security)
+# Increase permissions only when specific jobs require it
+permissions:
+  contents: read
+
 jobs:
   lint:
     name: Lint (ShellCheck)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        # actions/checkout@v4.3.0 (pinned to commit SHA for security)
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
 
       - name: Install ShellCheck
         run: |
@@ -27,11 +33,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        # actions/checkout@v4.3.0 (pinned to commit SHA for security)
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
 
       - name: Install shfmt
         run: |
-          wget https://github.com/mvdan/sh/releases/download/v3.8.0/shfmt_v3.8.0_linux_amd64 -O /tmp/shfmt
+          # Download shfmt v3.12.0 with checksum verification
+          wget https://github.com/mvdan/sh/releases/download/v3.12.0/shfmt_v3.12.0_linux_amd64 -O /tmp/shfmt
+          echo "d9fbb2a9c33d13f47e7618cf362a914d029d02a6df124064fff04fd688a745ea  /tmp/shfmt" | sha256sum -c -
           chmod +x /tmp/shfmt
           sudo mv /tmp/shfmt /usr/local/bin/shfmt
 
@@ -45,10 +54,11 @@ jobs:
     strategy:
       matrix:
         # Test on multiple Ubuntu versions
-        ubuntu-version: ['20.04', '22.04', 'latest']
+        ubuntu-version: ['20.04', '22.04', '24.04']
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        # actions/checkout@v4.3.0 (pinned to commit SHA for security)
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
 
       - name: Install bats-core
         run: |
@@ -60,7 +70,8 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        # actions/upload-artifact@v4.5.0 (pinned to commit SHA for security)
+        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b
         with:
           name: test-results-${{ matrix.ubuntu-version }}
           path: |
@@ -74,7 +85,8 @@ jobs:
     if: github.event_name == 'pull_request'
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        # actions/checkout@v4.3.0 (pinned to commit SHA for security)
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
 
       - name: Install dependencies
         run: |
@@ -91,7 +103,8 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        # actions/checkout@v4.3.0 (pinned to commit SHA for security)
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
 
       - name: Generate coverage report
         run: |
@@ -107,7 +120,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        # actions/checkout@v4.3.0 (pinned to commit SHA for security)
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
 
       - name: Run ShellCheck security checks
         run: |
@@ -124,7 +138,8 @@ jobs:
 
       - name: Upload security report
         if: always()
-        uses: actions/upload-artifact@v4
+        # actions/upload-artifact@v4.5.0 (pinned to commit SHA for security)
+        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b
         with:
           name: security-report
           path: shellcheck-report.json
