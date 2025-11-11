@@ -19,6 +19,9 @@ tests/tmp/
 *~
 .DS_Store
 
+# Claude Code configuration (user-specific)
+.claude/
+
 # Temporary files
 *.tmp
 tmp/
