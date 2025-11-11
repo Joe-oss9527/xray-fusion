@@ -20,9 +20,10 @@ tests/tmp/
 .DS_Store
 
 # Claude Code configuration (user-specific)
-# Allow hooks/ and README.md to be committed for project-wide automation
+# Allow settings.json, scripts/, and README.md to be committed for project-wide automation
 .claude/*
-!.claude/hooks/
+!.claude/settings.json
+!.claude/scripts/
 !.claude/README.md
 
 # Temporary files

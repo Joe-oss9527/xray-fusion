@@ -2,6 +2,47 @@
 
 > 本文档记录项目关键架构决策和核心教训。详细的编码规范、开发工作流和技术细节请参见 [@AGENTS.md](./AGENTS.md)。
 
+## ⚠️ 强制开发规范
+
+### 提交前质量检查（强制要求）
+
+**所有代码提交必须满足以下条件，无例外**：
+
+```bash
+# 必须全部通过才能提交
+make fmt           # 代码格式化（shfmt）
+make lint          # 静态检查（shellcheck）
+make test-unit     # 单元测试（bats）
+```
+
+**不允许提交**：
+- ❌ 格式不符合规范的代码
+- ❌ 有 ShellCheck 错误/警告的代码
+- ❌ 测试失败的代码
+- ❌ 未经测试的新功能
+
+### 推荐开发流程（TDD）
+
+默认采用测试驱动开发（Test-Driven Development）模式：
+
+```
+1. Write tests, commit    # 先写测试，提交测试
+2. Code, iterate, commit   # 写代码，迭代直到通过，提交代码
+```
+
+**核心原则**（参考 [Anthropic Claude Code Best Practices](https://www.anthropic.com/engineering/claude-code-best-practices)）：
+- 先编写测试，明确期望的输入/输出
+- 验证测试失败（确保测试有效）
+- 实现功能，迭代直到测试通过
+- 提交前运行完整检查：`make fmt && make lint && make test-unit`
+
+**优势**：
+- 清晰的迭代目标（测试用例）
+- 增量式改进，有明确验证标准
+- 高测试覆盖率，减少回归错误
+
+---
+
 ## 架构决策记录 (ADR)
 
 ### ADR-001: 统一参数传递系统（2025-09-XX）
