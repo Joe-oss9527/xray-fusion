@@ -20,7 +20,10 @@ tests/tmp/
 .DS_Store
 
 # Claude Code configuration (user-specific)
-.claude/
+# Allow hooks/ and README.md to be committed for project-wide automation
+.claude/*
+!.claude/hooks/
+!.claude/README.md
 
 # Temporary files
 *.tmp
