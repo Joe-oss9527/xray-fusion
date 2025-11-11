@@ -60,8 +60,19 @@ xray::install() {
   fi
 
   if [[ -z "${sha}" ]]; then
-    # Simplified SHA256 extraction: grep is faster and simpler than complex awk regex
-    sha="$(curl -fsSL "${url}.dgst" 2> /dev/null | grep -oE '[0-9A-Fa-f]{64}' | head -1)" || true
+    # SHA256 extraction: handle multiple .dgst formats safely
+    # Format 1: SHA256 (file) = hash  (priority - avoids SHA512 confusion)
+    # Format 2: hash filename         (fallback for plain checksums)
+    local dgst_content
+    dgst_content="$(curl -fsSL "${url}.dgst" 2> /dev/null)" || true
+    if [[ -n "${dgst_content}" ]]; then
+      # Try labeled SHA256 first
+      sha="$(echo "${dgst_content}" | grep -i 'SHA256' | grep -oE '[0-9A-Fa-f]{64}' | head -1)" || true
+      # Fallback to plain hash at line start
+      if [[ -z "${sha}" ]]; then
+        sha="$(echo "${dgst_content}" | grep -oE '^[0-9A-Fa-f]{64}' | head -1)" || true
+      fi
+    fi
   fi
 
   # Security: Validate SHA256 format regardless of source
