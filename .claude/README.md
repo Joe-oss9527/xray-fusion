@@ -36,6 +36,12 @@ The SessionStart hook automatically installs development tools in **web/iOS envi
 - **shellcheck v0.10.0** - Shell script linter
 - **bats-core v1.11.0** - Bash Automated Testing System
 
+**Invocation Source Detection** (Optimized):
+- **startup**: First-time session initialization → **Auto-install tools**
+- **resume**: Resume from `/resume` or `--resume` → **Skip installation** (tools already available)
+- **clear**: After `/clear` command → **Skip installation** (tools already available)
+- **compact**: Auto/manual compaction → **Skip installation** (tools already available)
+
 **Environment Detection**:
 - **Web/iOS** (`CLAUDE_CODE_REMOTE=true`): Auto-install tools to `~/.local/bin/`
 - **Desktop** (`CLAUDE_CODE_REMOTE=false` or unset): Skip auto-install, show manual installation instructions
@@ -94,9 +100,18 @@ When you start a new Claude Code session:
 
 1. Claude Code reads `.claude/settings.json` (and `.claude/settings.local.json` if exists)
 2. SessionStart hooks are triggered automatically
-3. The hook script checks for required tools
-4. Missing tools are downloaded and installed to `~/.local/bin/`
-5. Tools are ready for `make fmt`, `make lint`, etc.
+3. **The hook script detects invocation source** from JSON input (stdin)
+4. **If `source == "startup"`**: Install missing tools to `~/.local/bin/`
+5. **If `source != "startup"`**: Skip installation (tools already available from initial startup)
+6. Tools are ready for `make fmt`, `make lint`, etc.
+
+### Optimization Benefits
+
+**Performance**: Installation tasks only run once at first startup, not on every session resume/clear/compact.
+
+**Reliability**: Existing tools remain available across session operations without redundant reinstallation.
+
+**Backward Compatibility**: Falls back to `startup` behavior if JSON input is unavailable (e.g., older Claude Code versions).
 
 ### Notes
 
