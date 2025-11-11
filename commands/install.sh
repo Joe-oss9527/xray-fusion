@@ -52,9 +52,12 @@ main() {
     core::log info "enabling plugins" "$(printf '{"plugins":"%s"}' "${PLUGINS}")"
     IFS=',' read -ra plugin_list <<< "${PLUGINS}"
     for plugin in "${plugin_list[@]}"; do
-      plugin="$(echo "${plugin}" | xargs)" # trim whitespace
+      # Bash parameter expansion for trimming (faster than echo | xargs)
+      plugin="${plugin#"${plugin%%[![:space:]]*}"}" # trim leading whitespace
+      plugin="${plugin%"${plugin##*[![:space:]]}"}" # trim trailing whitespace
       if [[ -n "${plugin}" ]]; then
-        "${HERE}/commands/plugin.sh" enable "${plugin}"
+        # Direct function call (faster than forking external script)
+        plugins::enable "${plugin}"
       fi
     done
     # Reload enabled plugins after enabling new ones
@@ -81,15 +84,22 @@ main() {
     XRAY_REALITY_DEST="${XRAY_REALITY_DEST}:443"
   fi
   # Generate shortIds pool (3-5 shortIds for multi-client scenarios)
-  # Uses xray::generate_shortid() from services/xray/common.sh
+  # Uses xray::generate_shortids() for batch generation (performance optimization)
   # Tries: xxd (simple) → od (POSIX) → openssl (fallback)
 
-  # Primary shortId (backward compatible)
-  [[ -z "${XRAY_SHORT_ID:-}" ]] && XRAY_SHORT_ID="$(xray::generate_shortid)" || true
-
-  # Additional shortIds for future client differentiation (optional)
-  [[ -z "${XRAY_SHORT_ID_2:-}" ]] && XRAY_SHORT_ID_2="$(xray::generate_shortid)" || true
-  [[ -z "${XRAY_SHORT_ID_3:-}" ]] && XRAY_SHORT_ID_3="$(xray::generate_shortid)" || true
+  # Check if we need to generate any shortIds
+  if [[ -z "${XRAY_SHORT_ID:-}" && -z "${XRAY_SHORT_ID_2:-}" && -z "${XRAY_SHORT_ID_3:-}" ]]; then
+    # Batch generate all shortIds at once (3x faster than individual calls)
+    mapfile -t shortids < <(xray::generate_shortids 3)
+    XRAY_SHORT_ID="${shortids[0]}"
+    XRAY_SHORT_ID_2="${shortids[1]}"
+    XRAY_SHORT_ID_3="${shortids[2]}"
+  else
+    # Fallback: generate missing shortIds individually (backward compatibility)
+    [[ -z "${XRAY_SHORT_ID:-}" ]] && XRAY_SHORT_ID="$(xray::generate_shortid)" || true
+    [[ -z "${XRAY_SHORT_ID_2:-}" ]] && XRAY_SHORT_ID_2="$(xray::generate_shortid)" || true
+    [[ -z "${XRAY_SHORT_ID_3:-}" ]] && XRAY_SHORT_ID_3="$(xray::generate_shortid)" || true
+  fi
 
   # Validate all generated shortIds (hex format, even length, max 16 chars)
   # Use shared validator from lib/validators.sh

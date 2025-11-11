@@ -258,3 +258,94 @@ teardown() {
   run validators::shortid "${shortid}"
   [ "$status" -eq 0 ]
 }
+
+# Test: xray::generate_shortids (batch generation)
+@test "xray::generate_shortids - generates 3 shortIds by default" {
+  run xray::generate_shortids
+  [ "$status" -eq 0 ]
+
+  # Count lines (should be 3)
+  local line_count
+  line_count=$(echo "$output" | wc -l)
+  [ "${line_count}" -eq 3 ]
+}
+
+@test "xray::generate_shortids - generates specified count" {
+  run xray::generate_shortids 5
+  [ "$status" -eq 0 ]
+
+  local line_count
+  line_count=$(echo "$output" | wc -l)
+  [ "${line_count}" -eq 5 ]
+}
+
+@test "xray::generate_shortids - each shortId is 16 characters" {
+  local shortids
+  mapfile -t shortids < <(xray::generate_shortids 3)
+
+  [ "${#shortids[@]}" -eq 3 ]
+  for sid in "${shortids[@]}"; do
+    [ "${#sid}" -eq 16 ]
+  done
+}
+
+@test "xray::generate_shortids - all shortIds are unique" {
+  local shortids
+  mapfile -t shortids < <(xray::generate_shortids 5)
+
+  # Compare all pairs
+  for ((i=0; i<5; i++)); do
+    for ((j=i+1; j<5; j++)); do
+      [ "${shortids[$i]}" != "${shortids[$j]}" ]
+    done
+  done
+}
+
+@test "xray::generate_shortids - all shortIds are valid hex" {
+  local shortids
+  mapfile -t shortids < <(xray::generate_shortids 3)
+
+  for sid in "${shortids[@]}"; do
+    [[ "${sid}" =~ ^[0-9a-f]{16}$ ]]
+  done
+}
+
+@test "xray::generate_shortids - validates against validators::shortid" {
+  source "${PROJECT_ROOT}/lib/validators.sh"
+
+  local shortids
+  mapfile -t shortids < <(xray::generate_shortids 3)
+
+  for sid in "${shortids[@]}"; do
+    run validators::shortid "${sid}"
+    [ "$status" -eq 0 ]
+  done
+}
+
+@test "xray::generate_shortids - rejects invalid count" {
+  run xray::generate_shortids 0
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "ERROR: invalid count" ]]
+}
+
+@test "xray::generate_shortids - rejects negative count" {
+  run xray::generate_shortids -1
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "ERROR: invalid count" ]]
+}
+
+@test "xray::generate_shortids - rejects non-numeric count" {
+  run xray::generate_shortids abc
+  [ "$status" -eq 1 ]
+  [[ "$output" =~ "ERROR: invalid count" ]]
+}
+
+@test "xray::generate_shortids - handles count=1" {
+  run xray::generate_shortids 1
+  [ "$status" -eq 0 ]
+
+  local line_count
+  line_count=$(echo "$output" | wc -l)
+  [ "${line_count}" -eq 1 ]
+  [ "${#output}" -eq 16 ]
+}

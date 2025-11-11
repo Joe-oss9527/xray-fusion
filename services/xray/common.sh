@@ -44,3 +44,59 @@ xray::generate_shortid() {
   echo "${result}"
   return 0
 }
+
+##
+# Generate multiple random shortIds for Xray Reality (batch operation)
+#
+# Creates N shortIds in a single operation, reducing subprocess overhead.
+# More efficient than calling xray::generate_shortid() multiple times.
+#
+# Arguments:
+#   $1 - Count of shortIds to generate (integer, required, default: 3)
+#
+# Output:
+#   N lines, each containing a 16-character hexadecimal string to stdout
+#
+# Returns:
+#   0 - Success
+#   1 - All tools failed or invalid count
+#
+# Example:
+#   mapfile -t sids < <(xray::generate_shortids 3)
+#   # sids[0]=a1b2c3d4e5f67890
+#   # sids[1]=1234567890abcdef
+#   # sids[2]=fedcba9876543210
+##
+xray::generate_shortids() {
+  local count="${1:-3}"
+
+  # Validate count
+  if ! [[ "${count}" =~ ^[0-9]+$ ]] || [[ "${count}" -lt 1 ]]; then
+    echo "ERROR: invalid count for shortId generation: ${count}" >&2
+    return 1
+  fi
+
+  local bytes=$((count * 8)) # 8 bytes per shortId
+
+  if command -v xxd > /dev/null 2>&1; then
+    # xxd: read all bytes at once, output 16 chars per line
+    head -c "${bytes}" /dev/urandom | xxd -p -c 16 | head -n "${count}"
+  elif command -v od > /dev/null 2>&1; then
+    # od: read all bytes, split into 16-char chunks
+    local raw
+    raw="$(head -c "${bytes}" /dev/urandom | od -An -tx1 -v | tr -d ' \n')"
+    for ((i = 0; i < count; i++)); do
+      echo "${raw:$((i * 16)):16}"
+    done
+  elif command -v openssl > /dev/null 2>&1; then
+    # openssl: generate count times (no batch mode for rand)
+    for ((i = 0; i < count; i++)); do
+      openssl rand -hex 8
+    done
+  else
+    echo "ERROR: no suitable tool found for shortId generation" >&2
+    return 1
+  fi
+
+  return 0
+}

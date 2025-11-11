@@ -2,6 +2,10 @@
 # Dependency checking utilities
 set -euo pipefail
 
+# Global cache for detected package manager (performance optimization)
+# Avoids repeated command -v checks across multiple function calls
+_XRF_DETECTED_PM=""
+
 ##
 # Check critical dependencies before proceeding
 #
@@ -196,6 +200,7 @@ deps::print_install_help() {
 #
 # Detects the system's package manager by checking for common package
 # management tools. Returns the name of the first available package manager.
+# Results are cached in _XRF_DETECTED_PM to avoid repeated command -v checks.
 #
 # Supported package managers:
 # - apt-get (Debian/Ubuntu)
@@ -204,6 +209,9 @@ deps::print_install_help() {
 # - apk (Alpine)
 # - zypper (openSUSE)
 # - pacman (Arch Linux)
+#
+# Globals:
+#   _XRF_DETECTED_PM - Cache variable for detected package manager
 #
 # Output:
 #   Package manager name (apt-get, yum, dnf, apk, zypper, or pacman) to stdout
@@ -216,10 +224,17 @@ deps::print_install_help() {
 #   pm=$(deps::detect_package_manager) && echo "Using: ${pm}"
 ##
 deps::detect_package_manager() {
+  # Return cached result if available
+  if [[ -n "${_XRF_DETECTED_PM}" ]]; then
+    echo "${_XRF_DETECTED_PM}"
+    return 0
+  fi
+
   local managers=("apt-get" "dnf" "yum" "apk" "zypper" "pacman")
 
   for pm in "${managers[@]}"; do
     if command -v "${pm}" > /dev/null 2>&1; then
+      _XRF_DETECTED_PM="${pm}" # Cache the result
       echo "${pm}"
       return 0
     fi
