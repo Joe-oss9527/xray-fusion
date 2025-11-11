@@ -219,7 +219,7 @@ deps::detect_package_manager() {
   local managers=("apt-get" "dnf" "yum" "apk" "zypper" "pacman")
 
   for pm in "${managers[@]}"; do
-    if command -v "${pm}" >/dev/null 2>&1; then
+    if command -v "${pm}" > /dev/null 2>&1; then
       echo "${pm}"
       return 0
     fi
@@ -252,7 +252,7 @@ deps::install_packages() {
   local packages=("$@")
 
   if [[ ${#packages[@]} -eq 0 ]]; then
-    if declare -f core::log >/dev/null 2>&1; then
+    if declare -f core::log > /dev/null 2>&1; then
       core::log warn "no packages specified for installation" '{}'
     fi
     return 0
@@ -261,7 +261,7 @@ deps::install_packages() {
   # Detect package manager
   local pm
   if ! pm=$(deps::detect_package_manager); then
-    if declare -f core::log >/dev/null 2>&1; then
+    if declare -f core::log > /dev/null 2>&1; then
       core::log error "no supported package manager found" '{}'
     else
       printf '[ERROR] No supported package manager found\n' >&2
@@ -269,7 +269,7 @@ deps::install_packages() {
     return 1
   fi
 
-  if declare -f core::log >/dev/null 2>&1; then
+  if declare -f core::log > /dev/null 2>&1; then
     core::log info "installing packages" "$(printf '{"packages":"%s","manager":"%s"}' "${packages[*]}" "${pm}")"
   else
     printf '[INFO] Installing packages: %s (using %s)\n' "${packages[*]}" "${pm}" >&2
@@ -280,7 +280,7 @@ deps::install_packages() {
   local need_sudo=false
 
   # Check if we need sudo
-  if [[ "${EUID}" -ne 0 ]] && command -v sudo >/dev/null 2>&1; then
+  if [[ "${EUID}" -ne 0 ]] && command -v sudo > /dev/null 2>&1; then
     need_sudo=true
   fi
 
@@ -311,7 +311,7 @@ deps::install_packages() {
       cmd+=(pacman -S --noconfirm "${packages[@]}")
       ;;
     *)
-      if declare -f core::log >/dev/null 2>&1; then
+      if declare -f core::log > /dev/null 2>&1; then
         core::log error "unsupported package manager" "$(printf '{"manager":"%s"}' "${pm}")"
       fi
       return 1
@@ -319,15 +319,15 @@ deps::install_packages() {
   esac
 
   # Execute installation
-  if "${cmd[@]}" >/dev/null 2>&1; then
-    if declare -f core::log >/dev/null 2>&1; then
+  if "${cmd[@]}" > /dev/null 2>&1; then
+    if declare -f core::log > /dev/null 2>&1; then
       core::log info "packages installed successfully" "$(printf '{"packages":"%s"}' "${packages[*]}")"
     else
       printf '[INFO] Packages installed successfully: %s\n' "${packages[*]}" >&2
     fi
     return 0
   else
-    if declare -f core::log >/dev/null 2>&1; then
+    if declare -f core::log > /dev/null 2>&1; then
       core::log error "package installation failed" "$(printf '{"packages":"%s","rc":"%s"}' "${packages[*]}" "$?")"
     else
       printf '[ERROR] Package installation failed: %s\n' "${packages[*]}" >&2
@@ -365,21 +365,21 @@ deps::check_and_install_plugin_deps() {
   # Check which dependencies are missing
   local missing=()
   for dep in "${deps[@]}"; do
-    if ! command -v "${dep}" >/dev/null 2>&1; then
+    if ! command -v "${dep}" > /dev/null 2>&1; then
       missing+=("${dep}")
     fi
   done
 
   # All dependencies satisfied
   if [[ ${#missing[@]} -eq 0 ]]; then
-    if declare -f core::log >/dev/null 2>&1; then
+    if declare -f core::log > /dev/null 2>&1; then
       core::log debug "all plugin dependencies satisfied" "$(printf '{"plugin":"%s","deps":"%s"}' "${plugin_id}" "${deps[*]}")"
     fi
     return 0
   fi
 
   # Dependencies missing - prompt user for installation
-  if declare -f core::log >/dev/null 2>&1; then
+  if declare -f core::log > /dev/null 2>&1; then
     core::log info "plugin has missing dependencies" "$(printf '{"plugin":"%s","missing":"%s"}' "${plugin_id}" "${missing[*]}")"
   else
     printf '[INFO] Plugin %s requires: %s\n' "${plugin_id}" "${missing[*]}" >&2
@@ -402,7 +402,7 @@ deps::check_and_install_plugin_deps() {
     deps::install_packages "${missing[@]}"
     return $?
   else
-    if declare -f core::log >/dev/null 2>&1; then
+    if declare -f core::log > /dev/null 2>&1; then
       core::log warn "plugin dependencies not installed" "$(printf '{"plugin":"%s","missing":"%s"}' "${plugin_id}" "${missing[*]}")"
     else
       printf '[WARN] Plugin dependencies not installed: %s\n' "${missing[*]}" >&2
