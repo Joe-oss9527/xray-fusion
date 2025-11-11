@@ -79,8 +79,9 @@ xray::generate_shortids() {
   local bytes=$((count * 8)) # 8 bytes per shortId
 
   if command -v xxd > /dev/null 2>&1; then
-    # xxd: read all bytes at once, output 16 chars per line
-    head -c "${bytes}" /dev/urandom | xxd -p -c 16 | head -n "${count}"
+    # xxd: read all bytes at once, output 16 hex chars per line (8 bytes * 2)
+    # Note: -c 8 means 8 bytes per line, which produces 16 hex characters
+    head -c "${bytes}" /dev/urandom | xxd -p -c 8 | head -n "${count}"
   elif command -v od > /dev/null 2>&1; then
     # od: read all bytes, split into 16-char chunks
     local raw
