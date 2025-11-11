@@ -8,6 +8,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 . "${HERE}/lib/defaults.sh"
 # shellcheck source=lib/validators.sh
 . "${HERE}/lib/validators.sh"
+# shellcheck source=lib/error_codes.sh
+. "${HERE}/lib/error_codes.sh"
 
 # Initialize default values
 args::init() {
@@ -88,7 +90,7 @@ args::parse() {
 args::validate_topology() {
   local topology="${1:-}"
   if [[ -z "${topology}" ]]; then
-    core::log error "topology cannot be empty" "{}"
+    error_codes::missing_parameter "topology" ""
     return 1
   fi
 
@@ -97,7 +99,7 @@ args::validate_topology() {
       return 0
       ;;
     *)
-      core::log error "invalid topology" "$(printf '{"topology":"%s","valid":"reality-only,vision-reality"}' "${topology}")"
+      error_codes::invalid_topology "${topology}"
       return 1
       ;;
   esac
@@ -112,7 +114,30 @@ args::validate_domain() {
 
   # Use shared validator (RFC compliant, length limits, internal domain check)
   if ! validators::domain "${domain}"; then
-    core::log error "invalid domain" "$(printf '{"domain":"%s"}' "${domain}")"
+    # Detect specific reason for failure
+    local reason=""
+    case "${domain}" in
+      localhost | *.local | 127.* | 0.0.0.0)
+        reason="loopback or local address"
+        ;;
+      10.* | 172.1[6-9].* | 172.2[0-9].* | 172.3[0-1].* | 192.168.*)
+        reason="RFC 1918 private IP address"
+        ;;
+      169.254.*)
+        reason="RFC 3927 link-local address"
+        ;;
+      *.test | *.invalid)
+        reason="RFC 6761 special-use domain name"
+        ;;
+      ::1 | fc* | fd* | fe80*)
+        reason="IPv6 private address"
+        ;;
+      *)
+        reason="invalid format or too long"
+        ;;
+    esac
+
+    error_codes::invalid_domain "${domain}" "${reason}"
     return 1
   fi
 
@@ -140,7 +165,7 @@ args::validate_version() {
 args::validate_config() {
   # vision-reality topology requires domain
   if [[ "${TOPOLOGY}" == "vision-reality" && -z "${DOMAIN}" ]]; then
-    core::log error "vision-reality topology requires domain" "$(printf '{"topology":"%s"}' "${TOPOLOGY}")"
+    error_codes::missing_parameter "domain" "vision-reality topology"
     return 1
   fi
 

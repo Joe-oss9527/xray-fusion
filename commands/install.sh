@@ -80,7 +80,7 @@ main() {
   elif [[ -n "${UUID:-}" ]]; then
     # User-provided UUID
     if ! uuid::validate "${UUID}"; then
-      core::log error "invalid UUID format" "$(printf '{"uuid":"%s","format":"8-4-4-4-12 hex digits"}' "${UUID}")"
+      error_codes::invalid_uuid "${UUID}"
       exit 1
     fi
     generated_uuid="${UUID}"
