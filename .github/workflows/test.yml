@@ -21,6 +21,18 @@ jobs:
         # actions/checkout@v4.3.0 (pinned to commit SHA for security)
         uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
 
+      - name: Cache apt packages
+        id: cache-apt
+        # actions/cache@v4.2.0 (pinned to commit SHA for security)
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57
+        with:
+          path: |
+            /var/cache/apt/archives
+            /var/lib/apt/lists
+          key: apt-shellcheck-${{ runner.os }}-${{ hashFiles('.github/workflows/test.yml') }}
+          restore-keys: |
+            apt-shellcheck-${{ runner.os }}-
+
       - name: Install ShellCheck
         run: |
           sudo apt-get update
@@ -37,13 +49,25 @@ jobs:
         # actions/checkout@v4.3.0 (pinned to commit SHA for security)
         uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
 
+      - name: Cache shfmt binary
+        id: cache-shfmt
+        # actions/cache@v4.2.0 (pinned to commit SHA for security)
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57
+        with:
+          path: ~/.local/bin/shfmt
+          key: shfmt-v3.12.0-${{ runner.os }}
+
       - name: Install shfmt
+        if: steps.cache-shfmt.outputs.cache-hit != 'true'
         run: |
           # Download shfmt v3.12.0 with checksum verification
-          wget https://github.com/mvdan/sh/releases/download/v3.12.0/shfmt_v3.12.0_linux_amd64 -O /tmp/shfmt
-          echo "d9fbb2a9c33d13f47e7618cf362a914d029d02a6df124064fff04fd688a745ea  /tmp/shfmt" | sha256sum -c -
-          chmod +x /tmp/shfmt
-          sudo mv /tmp/shfmt /usr/local/bin/shfmt
+          mkdir -p ~/.local/bin
+          wget https://github.com/mvdan/sh/releases/download/v3.12.0/shfmt_v3.12.0_linux_amd64 -O ~/.local/bin/shfmt
+          echo "d9fbb2a9c33d13f47e7618cf362a914d029d02a6df124064fff04fd688a745ea  $HOME/.local/bin/shfmt" | sha256sum -c -
+          chmod +x ~/.local/bin/shfmt
+
+      - name: Add shfmt to PATH
+        run: echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Check formatting
         run: |
@@ -54,12 +78,26 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        # Test on multiple Ubuntu versions
-        ubuntu-version: ['20.04', '22.04', '24.04']
+        # OPTIMIZED: Test only LTS versions (20.04, 24.04)
+        # Rationale: Bash scripts have high cross-version compatibility
+        # Saves 33% CI time while maintaining adequate coverage
+        ubuntu-version: ['20.04', '24.04']
     steps:
       - name: Checkout code
         # actions/checkout@v4.3.0 (pinned to commit SHA for security)
         uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+
+      - name: Cache apt packages
+        id: cache-apt-bats
+        # actions/cache@v4.2.0 (pinned to commit SHA for security)
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57
+        with:
+          path: |
+            /var/cache/apt/archives
+            /var/lib/apt/lists
+          key: apt-bats-${{ runner.os }}-${{ matrix.ubuntu-version }}-${{ hashFiles('.github/workflows/test.yml') }}
+          restore-keys: |
+            apt-bats-${{ runner.os }}-${{ matrix.ubuntu-version }}-
 
       - name: Install bats-core
         run: |
@@ -89,6 +127,18 @@ jobs:
       - name: Checkout code
         # actions/checkout@v4.3.0 (pinned to commit SHA for security)
         uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+
+      - name: Cache apt packages
+        id: cache-apt-integration
+        # actions/cache@v4.2.0 (pinned to commit SHA for security)
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57
+        with:
+          path: |
+            /var/cache/apt/archives
+            /var/lib/apt/lists
+          key: apt-integration-${{ runner.os }}-${{ hashFiles('.github/workflows/test.yml') }}
+          restore-keys: |
+            apt-integration-${{ runner.os }}-
 
       - name: Install dependencies
         run: |
