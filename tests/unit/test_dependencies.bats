@@ -37,7 +37,7 @@ teardown() {
 
   run deps::check_critical
   [ "$status" -eq 1 ]
-  [[ "$output" =~ "downloader" ]] || [[ "$output" =~ "下载工具" ]]
+  [[ "$output" =~ "download tool" ]]
 
   unset -f command
 }

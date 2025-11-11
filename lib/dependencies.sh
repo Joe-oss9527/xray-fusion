@@ -45,9 +45,9 @@ deps::check_critical() {
 
   if [[ "${has_downloader}" == "false" ]]; then
     if declare -f core::log > /dev/null 2>&1; then
-      core::log error "需要至少一个下载工具: git, curl, 或 wget" '{}'
+      core::log error "at least one download tool required: git, curl, or wget" '{}'
     else
-      printf '[ERROR] 需要至少一个下载工具: git, curl, 或 wget\n' >&2
+      printf '[ERROR] At least one download tool required: git, curl, or wget\n' >&2
     fi
     return 1
   fi
@@ -157,10 +157,10 @@ deps::check_optional() {
 deps::print_install_help() {
   local missing=("$@")
 
-  printf '\n=== 缺少关键依赖 ===\n' >&2
-  printf '缺少以下工具: %s\n\n' "${missing[*]}" >&2
+  printf '\n=== Missing Critical Dependencies ===\n' >&2
+  printf 'Missing tools: %s\n\n' "${missing[*]}" >&2
 
-  printf '请根据您的系统安装:\n\n' >&2
+  printf 'Install based on your system:\n\n' >&2
 
   printf '# Debian/Ubuntu\n' >&2
   printf 'sudo apt-get update && sudo apt-get install -y' >&2

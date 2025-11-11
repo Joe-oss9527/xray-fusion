@@ -114,11 +114,11 @@ main() {
 
   # Generate private/public key pair if not provided
   if [[ -z "${XRAY_PRIVATE_KEY:-}" && -x "$(xray::bin)" ]]; then
-    local kp
-    kp="$("$(xray::bin)" x25519 2> /dev/null || true)"
-    XRAY_PRIVATE_KEY="$(echo "${kp}" | awk '/PrivateKey:/ {print $2}')"
-    XRAY_PUBLIC_KEY="$(echo "${kp}" | awk '/Password:/ {print $2}')"
-    unset kp
+    local keypair
+    keypair="$("$(xray::bin)" x25519 2> /dev/null || true)"
+    XRAY_PRIVATE_KEY="$(echo "${keypair}" | awk '/PrivateKey:/ {print $2}')"
+    XRAY_PUBLIC_KEY="$(echo "${keypair}" | awk '/Password:/ {print $2}')"
+    unset keypair
   fi
 
   export XRAY_SNIFFING="${XRAY_SNIFFING:-false}"
@@ -132,25 +132,25 @@ main() {
   # Install and start systemd service
   "${HERE}/services/xray/systemd-unit.sh" install
 
-  local ver="unknown"
-  [[ -x "$(xray::bin)" ]] && ver="$("$(xray::bin)" -version 2> /dev/null | awk 'NR==1{print $2}')"
+  local version="unknown"
+  [[ -x "$(xray::bin)" ]] && version="$("$(xray::bin)" -version 2> /dev/null | awk 'NR==1{print $2}')"
   local now
   now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  local st
+  local state
   if [[ "${TOPOLOGY}" == "vision-reality" ]]; then
-    st=$(jq -n --arg name "vision-reality" --arg ver "${ver}" --arg ts "${now}" \
+    state=$(jq -n --arg name "vision-reality" --arg ver "${version}" --arg ts "${now}" \
       --arg vport "${XRAY_VISION_PORT}" --arg rport "${XRAY_REALITY_PORT}" \
       --arg vuuid "${XRAY_UUID_VISION}" --arg ruuid "${XRAY_UUID_REALITY}" \
       --arg domain "${XRAY_DOMAIN}" --arg sni "${XRAY_SNI}" --arg sid "${XRAY_SHORT_ID:-}" --arg pbk "${XRAY_PUBLIC_KEY:-}" \
       '{name:$name,version:$ver,installed_at:$ts,xray:{vision_port:($vport|tonumber),reality_port:($rport|tonumber),uuid_vision:$vuuid,uuid_reality:$ruuid,domain:$domain,reality_sni:$sni,short_id:$sid,reality_public_key:$pbk}}')
   else
-    st=$(jq -n --arg name "reality-only" --arg ver "${ver}" --arg ts "${now}" \
+    state=$(jq -n --arg name "reality-only" --arg ver "${version}" --arg ts "${now}" \
       --arg port "${XRAY_PORT}" --arg uuid "${XRAY_UUID}" --arg sni "${XRAY_SNI}" --arg sid "${XRAY_SHORT_ID:-}" --arg pbk "${XRAY_PUBLIC_KEY:-}" \
       '{name:$name,version:$ver,installed_at:$ts,xray:{port:($port|tonumber),uuid:$uuid,reality_sni:$sni,short_id:$sid,reality_public_key:$pbk}}')
   fi
-  state::save "${st}"
+  state::save "${state}"
 
   "${HERE}/services/xray/client-links.sh" "${TOPOLOGY}"
-  core::log info "Install complete" "$(printf '{"topology":"%s","version":"%s"}' "${TOPOLOGY}" "${ver}")"
+  core::log info "Install complete" "$(printf '{"topology":"%s","version":"%s"}' "${TOPOLOGY}" "${version}")"
 }
 main "${@}"

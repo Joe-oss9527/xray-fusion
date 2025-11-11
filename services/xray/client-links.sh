@@ -11,14 +11,14 @@ main() {
   core::init "${@}"
   plugins::ensure_dirs
   plugins::load_enabled
-  local st
-  st="$(state::load)"
+  local state
+  state="$(state::load)"
 
   # Performance optimization: Extract all fields in single jq call (11→1 fork)
   # Uses tab-separated output to avoid complex JSON parsing
   local topo sni sid pbk vport rport uv ur dom uuid port
   read -r topo sni sid pbk vport rport uv ur dom uuid port < <(
-    echo "${st}" | jq -r '[
+    echo "${state}" | jq -r '[
       .name // .topology // "reality-only",
       .xray.reality_sni // "www.microsoft.com",
       .xray.short_id // "",
