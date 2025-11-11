@@ -202,10 +202,10 @@ core::ensure_lock_writable() {
   [[ ! -f "${lock}" ]] && return 0
 
   # Try to fix ownership first (may be root-owned from previous sudo run)
-  if ! chown "$(id -u):$(id -g)" "${lock}" 2>/dev/null; then
+  if ! chown "$(id -u):$(id -g)" "${lock}" 2> /dev/null; then
     # Need sudo to change ownership
     if command -v sudo > /dev/null 2>&1; then
-      sudo chown "$(id -u):$(id -g)" "${lock}" 2>/dev/null || {
+      sudo chown "$(id -u):$(id -g)" "${lock}" 2> /dev/null || {
         core::log warn "cannot fix lock file ownership" "$(printf '{"lock":"%s"}' "${lock//\"/\\\"}")"
         return 1
       }
@@ -216,9 +216,9 @@ core::ensure_lock_writable() {
   fi
 
   # Fix permissions (make writable)
-  if ! chmod 0644 "${lock}" 2>/dev/null; then
+  if ! chmod 0644 "${lock}" 2> /dev/null; then
     if command -v sudo > /dev/null 2>&1; then
-      sudo chmod 0644 "${lock}" 2>/dev/null || {
+      sudo chmod 0644 "${lock}" 2> /dev/null || {
         core::log warn "cannot fix lock file permissions" "$(printf '{"lock":"%s"}' "${lock//\"/\\\"}")"
         return 1
       }

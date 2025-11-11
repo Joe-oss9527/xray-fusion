@@ -38,7 +38,7 @@ ensure_dir() {
   [[ -d "${dir}" ]] && return 0
 
   # Try to create directory
-  if ! mkdir -p "${dir}" 2>/dev/null; then
+  if ! mkdir -p "${dir}" 2> /dev/null; then
     # Fallback to sudo
     if command -v sudo > /dev/null 2>&1; then
       sudo mkdir -p "${dir}" || return 1
@@ -48,7 +48,7 @@ ensure_dir() {
   fi
 
   # Set permissions
-  chmod "${mode}" "${dir}" 2>/dev/null || true
+  chmod "${mode}" "${dir}" 2> /dev/null || true
   return 0
 }
 
@@ -71,18 +71,18 @@ ensure_lock_writable() {
   [[ ! -f "${lock}" ]] && return 0
 
   # Fix ownership (may be root-owned from previous sudo run)
-  if ! chown "$(id -u):$(id -g)" "${lock}" 2>/dev/null; then
+  if ! chown "$(id -u):$(id -g)" "${lock}" 2> /dev/null; then
     if command -v sudo > /dev/null 2>&1; then
-      sudo chown "$(id -u):$(id -g)" "${lock}" 2>/dev/null || return 1
+      sudo chown "$(id -u):$(id -g)" "${lock}" 2> /dev/null || return 1
     else
       return 1
     fi
   fi
 
   # Fix permissions
-  if ! chmod 0644 "${lock}" 2>/dev/null; then
+  if ! chmod 0644 "${lock}" 2> /dev/null; then
     if command -v sudo > /dev/null 2>&1; then
-      sudo chmod 0644 "${lock}" 2>/dev/null || return 1
+      sudo chmod 0644 "${lock}" 2> /dev/null || return 1
     else
       return 1
     fi
