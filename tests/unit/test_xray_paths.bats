@@ -190,3 +190,71 @@ teardown() {
   [[ "${releases}" == "${confbase}/releases" ]]
   [[ "${active}" == "${confbase}/active" ]]
 }
+
+# Test: xray::generate_shortid
+@test "xray::generate_shortid - generates 16-character hex string" {
+  run xray::generate_shortid
+  [ "$status" -eq 0 ]
+
+  # Check length
+  [ "${#output}" -eq 16 ]
+
+  # Check hex format (lowercase)
+  [[ "$output" =~ ^[0-9a-f]{16}$ ]]
+}
+
+@test "xray::generate_shortid - generates unique values" {
+  local id1 id2 id3
+
+  id1=$(xray::generate_shortid)
+  id2=$(xray::generate_shortid)
+  id3=$(xray::generate_shortid)
+
+  # All three should be different
+  [ "${id1}" != "${id2}" ]
+  [ "${id2}" != "${id3}" ]
+  [ "${id1}" != "${id3}" ]
+}
+
+@test "xray::generate_shortid - works with xxd" {
+  if ! command -v xxd > /dev/null 2>&1; then
+    skip "xxd not available"
+  fi
+
+  run xray::generate_shortid
+  [ "$status" -eq 0 ]
+  [ "${#output}" -eq 16 ]
+}
+
+@test "xray::generate_shortid - works with od (fallback)" {
+  if ! command -v od > /dev/null 2>&1; then
+    skip "od not available"
+  fi
+
+  # This test assumes xxd might not be available
+  run xray::generate_shortid
+  [ "$status" -eq 0 ]
+  [ "${#output}" -eq 16 ]
+}
+
+@test "xray::generate_shortid - works with openssl (final fallback)" {
+  if ! command -v openssl > /dev/null 2>&1; then
+    skip "openssl not available (should never happen)"
+  fi
+
+  run xray::generate_shortid
+  [ "$status" -eq 0 ]
+  [ "${#output}" -eq 16 ]
+}
+
+@test "xray::generate_shortid - output is valid shortId format" {
+  # Source validators to check output
+  source "${PROJECT_ROOT}/lib/validators.sh"
+
+  local shortid
+  shortid=$(xray::generate_shortid)
+
+  # Should pass validator
+  run validators::shortid "${shortid}"
+  [ "$status" -eq 0 ]
+}

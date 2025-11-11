@@ -164,3 +164,72 @@ teardown() {
   run core::with_flock "${lock_file}" bash -c "exit 42"
   [ "$status" -eq 42 ]
 }
+
+# Log format consistency tests
+@test "core::log - text format uses consistent width (%-8s)" {
+  XRF_JSON=false
+
+  # Test different log levels
+  run core::log info "test"
+  [ "$status" -eq 0 ]
+  # Format: [timestamp] level    message
+  # The level should be padded to 8 characters
+  [[ "$output" =~ ^\[[0-9T:Z-]+\]\ [a-z]+\ {1,8}test ]]
+
+  run core::log warn "warning message"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ ^\[[0-9T:Z-]+\]\ [a-z]+\ {1,8}warning\ message ]]
+}
+
+@test "core::log - JSON format is valid and consistent" {
+  XRF_JSON=true
+
+  run core::log info "test message" '{"key":"value"}'
+  [ "$status" -eq 0 ]
+
+  # Should be valid JSON
+  echo "$output" | grep -q '{"ts":'
+  echo "$output" | grep -q '"level":"info"'
+  echo "$output" | grep -q '"msg":"test message"'
+  echo "$output" | grep -q '"ctx":{"key":"value"}'
+}
+
+@test "core::log - timestamp format is ISO 8601" {
+  XRF_JSON=false
+
+  run core::log info "test"
+  [ "$status" -eq 0 ]
+
+  # Extract timestamp from output: [2025-11-10T12:34:56Z]
+  [[ "$output" =~ ^\[([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z)\] ]]
+}
+
+@test "caddy-cert-sync log format matches core::log" {
+  # Extract log function from caddy-cert-sync.sh and test it
+  local script="${PROJECT_ROOT}/scripts/caddy-cert-sync.sh"
+
+  # Source only the log function
+  source <(sed -n '/^log()/,/^}/p' "${script}")
+
+  XRF_JSON=false
+  run log info "test message"
+  [ "$status" -eq 0 ]
+
+  # Should use same format as core::log (%-8s width)
+  [[ "$output" =~ ^\[[0-9T:Z-]+\]\ [a-z]+\ {1,8}\[caddy-cert-sync\]\ test\ message ]]
+}
+
+@test "caddy-cert-sync JSON format matches core::log" {
+  # Extract log function from caddy-cert-sync.sh
+  local script="${PROJECT_ROOT}/scripts/caddy-cert-sync.sh"
+  source <(sed -n '/^log()/,/^}/p' "${script}")
+
+  XRF_JSON=true
+  run log info "test message"
+  [ "$status" -eq 0 ]
+
+  # Should be valid JSON
+  echo "$output" | grep -q '{"ts":'
+  echo "$output" | grep -q '"level":"info"'
+  echo "$output" | grep -q '"msg":".*caddy-cert-sync.*test message"'
+}

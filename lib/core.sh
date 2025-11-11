@@ -174,6 +174,63 @@ core::retry() {
 }
 
 ##
+# Ensure lock file is writable by current user
+#
+# Handles mixed sudo/non-sudo scenarios where lock file may be
+# owned by root from a previous run. Attempts to fix ownership
+# and permissions to allow the current user to write to the lock file.
+#
+# Arguments:
+#   $1 - Lock file path (string, required)
+#
+# Returns:
+#   0 - Lock file is writable or doesn't exist
+#   1 - Failed to make lock file writable
+#
+# Security:
+#   - Fixes CWE-283 (Unverified Ownership) by ensuring correct ownership
+#   - Uses sudo only when necessary (principle of least privilege)
+#   - Safe to call multiple times (idempotent)
+#
+# Example:
+#   core::ensure_lock_writable "/var/lib/xray-fusion/locks/install.lock"
+##
+core::ensure_lock_writable() {
+  local lock="${1}"
+
+  # If file doesn't exist, nothing to fix
+  [[ ! -f "${lock}" ]] && return 0
+
+  # Try to fix ownership first (may be root-owned from previous sudo run)
+  if ! chown "$(id -u):$(id -g)" "${lock}" 2> /dev/null; then
+    # Need sudo to change ownership
+    if command -v sudo > /dev/null 2>&1; then
+      sudo chown "$(id -u):$(id -g)" "${lock}" 2> /dev/null || {
+        core::log warn "cannot fix lock file ownership" "$(printf '{"lock":"%s"}' "${lock//\"/\\\"}")"
+        return 1
+      }
+    else
+      core::log warn "cannot fix lock file ownership (no sudo)" "$(printf '{"lock":"%s"}' "${lock//\"/\\\"}")"
+      return 1
+    fi
+  fi
+
+  # Fix permissions (make writable)
+  if ! chmod 0644 "${lock}" 2> /dev/null; then
+    if command -v sudo > /dev/null 2>&1; then
+      sudo chmod 0644 "${lock}" 2> /dev/null || {
+        core::log warn "cannot fix lock file permissions" "$(printf '{"lock":"%s"}' "${lock//\"/\\\"}")"
+        return 1
+      }
+    else
+      return 1
+    fi
+  fi
+
+  return 0
+}
+
+##
 # Execute command with exclusive file lock
 #
 # Acquires a file-based lock before executing the command,
@@ -221,16 +278,13 @@ core::with_flock() {
       # Use install with sudo for atomic creation (single syscall, no TOCTOU)
       sudo install -m 0644 -o "$(id -u)" -g "$(id -g)" /dev/null "${lock}" 2> /dev/null || true
     fi
-  else
-    # Lock file exists, ensure correct ownership and permissions
-    # This handles cases where the lock was created by a previous root run
-    if ! chown "$(id -u):$(id -g)" "${lock}" 2> /dev/null; then
-      sudo chown "$(id -u):$(id -g)" "${lock}" 2> /dev/null || true
-    fi
-    if ! chmod 0644 "${lock}" 2> /dev/null; then
-      sudo chmod 0644 "${lock}" 2> /dev/null || true
-    fi
   fi
+
+  # Ensure lock file is writable (handles previous root runs - CWE-283)
+  core::ensure_lock_writable "${lock}" || {
+    core::log error "lock file not writable" "$(printf '{"lock":"%s"}' "${lock//\"/\\\"}")"
+    return 1
+  }
 
   (
     exec 200>> "${lock}"

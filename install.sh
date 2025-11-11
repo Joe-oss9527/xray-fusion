@@ -303,19 +303,75 @@ args::validate_topology() {
   esac
 }
 
+##
+# Validate domain name (RFC-compliant)
+#
+# This is a standalone version that mirrors lib/validators.sh::validators::domain()
+# to ensure install.sh can validate domains without dependencies.
+#
+# IMPORTANT: Keep this in sync with lib/validators.sh for consistent security.
+#
+# Checks:
+# - RFC 1035: Format and length restrictions
+# - RFC 1918: Private IPv4 networks
+# - RFC 3927: Link-local addresses (169.254.0.0/16)
+# - RFC 6761: Special-use domain names (.test, .invalid)
+# - RFC 4193/4291: IPv6 private/link-local addresses
+##
 args::validate_domain() {
   local domain="${1:-}"
+
+  # Empty domain is allowed (optional parameter)
   [[ -z "${domain}" ]] && return 0
-  [[ "${domain}" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$ ]] || {
-    log_error "Invalid domain format: ${domain}"
+
+  # Length check (DNS specification: total length <= 253)
+  if [[ ${#domain} -gt 253 ]]; then
+    log_error "Domain too long (max 253 characters): ${domain}"
     return 1
-  }
+  fi
+
+  # RFC 1035 compliant format
+  if [[ ! "${domain}" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$ ]]; then
+    log_error "Invalid domain format (RFC 1035): ${domain}"
+    return 1
+  fi
+
+  # Reject private/internal/special-use domains
   case "${domain}" in
-    localhost|*.local|127.*|10.*|172.1[6-9].*|172.2[0-9].*|172.3[0-1].*|192.168.*)
-      log_error "Internal domain not allowed: ${domain}"
+    # Loopback and special addresses
+    localhost|*.local|127.*|0.0.0.0)
+      log_error "Loopback/local domain not allowed: ${domain}"
+      return 1
+      ;;
+    # RFC 1918 private networks
+    10.*|172.1[6-9].*|172.2[0-9].*|172.3[0-1].*|192.168.*)
+      log_error "RFC 1918 private network not allowed: ${domain}"
+      return 1
+      ;;
+    # RFC 3927 link-local addresses
+    169.254.*)
+      log_error "RFC 3927 link-local address not allowed: ${domain}"
+      return 1
+      ;;
+    # RFC 6761 special-use domain names
+    *.test|*.invalid)
+      log_error "RFC 6761 special-use TLD not allowed: ${domain}"
       return 1
       ;;
   esac
+
+  # IPv6 private address detection (RFC 4193, RFC 4291)
+  # - ::1 (loopback)
+  # - fc00::/7 and fd00::/8 (unique local addresses - RFC 4193)
+  # - fe80::/10 (link-local - RFC 4291)
+  if [[ "${domain}" =~ ^::1$ ]] \
+    || [[ "${domain}" =~ ^[fF][cCdD][0-9a-fA-F]{2}: ]] \
+    || [[ "${domain}" =~ ^[fF][eE]80: ]]; then
+    log_error "IPv6 private/link-local address not allowed: ${domain}"
+    return 1
+  fi
+
+  return 0
 }
 
 args::validate_version() {

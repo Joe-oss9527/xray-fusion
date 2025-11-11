@@ -18,22 +18,85 @@ fi
 LOCK_FILE="/var/lib/xray-fusion/locks/caddy-cert-sync.lock"
 LOCK_DIR="$(dirname "${LOCK_FILE}")"
 
-# Create lock directory
-if ! test -d "${LOCK_DIR}"; then
-  if ! mkdir -p "${LOCK_DIR}" 2> /dev/null; then
+##
+# Standalone version of io::ensure_dir (compatible with modules/io.sh)
+#
+# Ensures directory exists with correct permissions. Lightweight version
+# for standalone scripts that cannot source modules/io.sh.
+#
+# Arguments:
+#   $1 - Directory path
+#   $2 - Permissions mode (optional, default: 0755)
+#
+# Returns:
+#   0 - Success, 1 - Failed to create directory
+##
+ensure_dir() {
+  local dir="${1}" mode="${2:-0755}"
+
+  # Directory exists, nothing to do
+  [[ -d "${dir}" ]] && return 0
+
+  # Try to create directory
+  if ! mkdir -p "${dir}" 2> /dev/null; then
+    # Fallback to sudo
     if command -v sudo > /dev/null 2>&1; then
-      sudo mkdir -p "${LOCK_DIR}" || {
-        printf '[%s] %-5s [caddy-cert-sync] failed to create lock directory\n' \
-          "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "error" >&2
-        exit 1
-      }
+      sudo mkdir -p "${dir}" || return 1
     else
-      printf '[%s] %-5s [caddy-cert-sync] cannot create lock directory (no sudo)\n' \
-        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "error" >&2
-      exit 1
+      return 1
     fi
   fi
-fi
+
+  # Set permissions
+  chmod "${mode}" "${dir}" 2> /dev/null || true
+  return 0
+}
+
+##
+# Standalone version of core::ensure_lock_writable (compatible with lib/core.sh)
+#
+# Ensures lock file is writable by current user. Lightweight version for
+# standalone scripts that cannot source lib/core.sh.
+#
+# Arguments:
+#   $1 - Lock file path
+#
+# Returns:
+#   0 - Success, 1 - Failed to make writable
+##
+ensure_lock_writable() {
+  local lock="${1}"
+
+  # File doesn't exist, nothing to fix
+  [[ ! -f "${lock}" ]] && return 0
+
+  # Fix ownership (may be root-owned from previous sudo run)
+  if ! chown "$(id -u):$(id -g)" "${lock}" 2> /dev/null; then
+    if command -v sudo > /dev/null 2>&1; then
+      sudo chown "$(id -u):$(id -g)" "${lock}" 2> /dev/null || return 1
+    else
+      return 1
+    fi
+  fi
+
+  # Fix permissions
+  if ! chmod 0644 "${lock}" 2> /dev/null; then
+    if command -v sudo > /dev/null 2>&1; then
+      sudo chmod 0644 "${lock}" 2> /dev/null || return 1
+    else
+      return 1
+    fi
+  fi
+
+  return 0
+}
+
+# Ensure lock directory exists
+ensure_dir "${LOCK_DIR}" 0755 || {
+  printf '[%s] %-8s [caddy-cert-sync] failed to create lock directory\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "error" >&2
+  exit 1
+}
 
 # Atomic lock file creation (prevents TOCTOU - CWE-362)
 if ! test -f "${LOCK_FILE}" 2> /dev/null; then
@@ -42,33 +105,27 @@ if ! test -f "${LOCK_FILE}" 2> /dev/null; then
     # Fallback to sudo
     if command -v sudo > /dev/null 2>&1; then
       sudo install -m 0644 -o "$(id -u)" -g "$(id -g)" /dev/null "${LOCK_FILE}" 2> /dev/null || {
-        printf '[%s] %-5s [caddy-cert-sync] failed to create lock file\n' \
+        printf '[%s] %-8s [caddy-cert-sync] failed to create lock file\n' \
           "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "error" >&2
         exit 1
       }
     else
       # Last resort: create with touch (may have wrong ownership)
       touch "${LOCK_FILE}" 2> /dev/null || {
-        printf '[%s] %-5s [caddy-cert-sync] cannot create lock file\n' \
+        printf '[%s] %-8s [caddy-cert-sync] cannot create lock file\n' \
           "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "error" >&2
         exit 1
       }
     fi
   fi
-else
-  # Lock file exists, fix ownership (handles previous root runs - CWE-283)
-  if ! chown "$(id -u):$(id -g)" "${LOCK_FILE}" 2> /dev/null; then
-    if command -v sudo > /dev/null 2>&1; then
-      sudo chown "$(id -u):$(id -g)" "${LOCK_FILE}" 2> /dev/null || true
-    fi
-  fi
-  # Fix permissions
-  if ! chmod 0644 "${LOCK_FILE}" 2> /dev/null; then
-    if command -v sudo > /dev/null 2>&1; then
-      sudo chmod 0644 "${LOCK_FILE}" 2> /dev/null || true
-    fi
-  fi
 fi
+
+# Ensure lock file is writable (handles previous root runs - CWE-283)
+ensure_lock_writable "${LOCK_FILE}" || {
+  printf '[%s] %-8s [caddy-cert-sync] lock file not writable\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "error" >&2
+  exit 1
+}
 
 # Non-blocking lock acquisition
 exec 200>> "${LOCK_FILE}"
@@ -97,7 +154,28 @@ fi
 
 DOMAIN="${1:-}"
 
-# Embedded logging (compatible with core::log from lib/core.sh)
+##
+# Standalone logging function compatible with core::log
+#
+# This is a lightweight version for standalone scripts that cannot
+# source lib/core.sh. Maintains compatibility with the main logging
+# system's format and behavior.
+#
+# Arguments:
+#   $1 - Log level (debug|info|warn|error)
+#   $2 - Message string
+#
+# Globals:
+#   XRF_JSON - If "true", output JSON format
+#   XRF_DEBUG - If "true", show debug messages
+#
+# Output:
+#   Log line to stderr (text or JSON format)
+#
+# Example:
+#   log info "Certificate synced successfully"
+#   log error "Failed to sync certificate"
+##
 log() {
   local lvl="${1}"
   shift
@@ -106,13 +184,18 @@ log() {
   # Filter debug messages unless XRF_DEBUG is true
   [[ "${lvl}" == "debug" && "${XRF_DEBUG}" != "true" ]] && return 0
 
-  # All logs to stderr
+  # Generate ISO 8601 timestamp (UTC)
+  local ts
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+  # All logs to stderr (consistent with lib/core.sh)
   if [[ "${XRF_JSON}" == "true" ]]; then
     printf '{"ts":"%s","level":"%s","msg":"[caddy-cert-sync] %s"}\n' \
-      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${lvl}" "${msg}" >&2
+      "${ts}" "${lvl}" "${msg}" >&2
   else
-    printf '[%s] %-5s [caddy-cert-sync] %s\n' \
-      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${lvl}" "${msg}" >&2
+    # Use consistent width: %-8s (matches lib/core.sh format)
+    printf '[%s] %-8s [caddy-cert-sync] %s\n' \
+      "${ts}" "${lvl}" "${msg}" >&2
   fi
 }
 
@@ -196,12 +279,18 @@ if ! validate_cert_key_match "${cert_file}" "${key_file}"; then
 fi
 
 # 原子复制：使用同分区临时目录 + mv（POSIX 原子操作）
-mkdir -p "${XRAY_CERT_DIR}"
+ensure_dir "${XRAY_CERT_DIR}" 0755 || {
+  log error "failed to create certificate directory: ${XRAY_CERT_DIR}"
+  exit 1
+}
 tmpdir=$(mktemp -d -p "${XRAY_CERT_DIR}" .cert-sync.XXXXXX)
 
 # 备份现有证书（用于失败回滚）
 backup_dir="${XRAY_CERT_DIR}/.backup.$$"
-mkdir -p "${backup_dir}"
+ensure_dir "${backup_dir}" 0755 || {
+  log error "failed to create backup directory: ${backup_dir}"
+  exit 1
+}
 
 if [[ -f "${XRAY_CERT_DIR}/fullchain.pem" ]]; then
   cp -a "${XRAY_CERT_DIR}/fullchain.pem" "${backup_dir}/fullchain.pem"
