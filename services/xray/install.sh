@@ -5,6 +5,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 . "${HERE}/modules/io.sh"
 . "${HERE}/modules/user/user.sh"
 . "${HERE}/services/xray/common.sh"
+. "${HERE}/services/xray/install_utils.sh"
 
 need() { command -v "${1}" > /dev/null 2>&1 || {
   core::log error "missing dependency" "$(printf '{"bin":"%s"}' "${1}")"
@@ -60,12 +61,16 @@ xray::install() {
   fi
 
   if [[ -z "${sha}" ]]; then
-    sha="$(curl -fsSL "${url}.dgst" 2> /dev/null | awk 'match($0,/^SHA2?-?256[= ] *([0-9A-Fa-f]{64})/,m){print m[1]; exit} match($0,/^SHA256 \([^)]+\) = ([0-9A-Fa-f]{64})/,m){print m[1]; exit} match($0,/^([0-9A-Fa-f]{64})[[:space:]]+/,m){print m[1]; exit}')" || true
+    local dgst_content
+    dgst_content="$(curl -fsSL "${url}.dgst" 2> /dev/null)" || true
+    if [[ -n "${dgst_content}" ]]; then
+      sha="$(xray::extract_sha256_from_dgst "${dgst_content}")"
+    fi
   fi
 
   # Security: Validate SHA256 format regardless of source
   if [[ -n "${sha}" ]]; then
-    if [[ ! "${sha}" =~ ^[0-9A-Fa-f]{64}$ ]]; then
+    if ! xray::validate_sha256_format "${sha}"; then
       core::log error "invalid SHA256 format" "$(printf '{"sha256":"%s","source":"dgst_file"}' "${sha}")"
       exit 5
     fi
@@ -73,11 +78,11 @@ xray::install() {
     core::log error "missing SHA256 checksum" "$(printf '{"dgst_url":"%s.dgst","hint":"Set XRAY_SHA256 env var or check network connectivity"}' "${url}")"
     exit 5
   fi
-  got="$(sha256sum "${tmp}/xray.zip" | awk '{print $1}')"
-  [[ "${got}" == "${sha}" ]] || {
-    core::log error "SHA256 mismatch" "$(printf '{"expected":"%s","got":"%s"}' "${sha}" "${got}")"
+
+  # Verify file checksum
+  if ! xray::verify_file_checksum "${tmp}/xray.zip" "${sha}"; then
     exit 6
-  }
+  fi
 
   (cd "${tmp}" && unzip -q xray.zip)
   io::ensure_dir "$(xray::prefix)/bin" 0755

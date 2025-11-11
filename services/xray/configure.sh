@@ -9,6 +9,13 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 . "${HERE}/modules/state.sh"
 . "${HERE}/services/xray/common.sh"
 
+# Xray configuration file naming constants
+# Files are numbered to control load order (Xray loads them alphabetically)
+readonly XRAY_CONFIG_00_LOG="00_log.json"             # Logging configuration (loaded first)
+readonly XRAY_CONFIG_05_INBOUNDS="05_inbounds.json"   # Inbound connections (VLESS/REALITY/Vision)
+readonly XRAY_CONFIG_06_OUTBOUNDS="06_outbounds.json" # Outbound connections (direct/block)
+readonly XRAY_CONFIG_09_ROUTING="09_routing.json"     # Routing rules (loaded last)
+
 core::log debug "configure.sh started" "$(printf '{"args":"%s"}' "$*")"
 
 # Helper: Convert CSV to JSON array
@@ -105,15 +112,15 @@ xray::write_base_configs() {
 
   # Logging configuration
   printf '{"log":{"access":"none","error":"none","loglevel":"%s"}}' "${log_level}" \
-    | io::atomic_write "${release_dir}/00_log.json" 0640
+    | io::atomic_write "${release_dir}/${XRAY_CONFIG_00_LOG}" 0640
 
   # Outbounds configuration
   printf '{"outbounds":[{"protocol":"freedom","tag":"direct"},{"protocol":"blackhole","tag":"block"}]}' \
-    | io::atomic_write "${release_dir}/06_outbounds.json" 0640
+    | io::atomic_write "${release_dir}/${XRAY_CONFIG_06_OUTBOUNDS}" 0640
 
   # Routing configuration
   printf '{"routing":{"domainStrategy":"IPIfNonMatch","rules":[]}}' \
-    | io::atomic_write "${release_dir}/09_routing.json" 0640
+    | io::atomic_write "${release_dir}/${XRAY_CONFIG_09_ROUTING}" 0640
 
   core::log debug "base configs written" "$(printf '{"dir":"%s"}' "${release_dir}")"
 }
@@ -138,7 +145,7 @@ xray::render_reality_inbound() {
   shortids_pool="$(build_shortids_pool "${XRAY_SHORT_ID}" "${XRAY_SHORT_ID_2:-}" "${XRAY_SHORT_ID_3:-}")"
 
   # Write inbound configuration
-  cat > "${release_dir}/05_inbounds.json" << JSON
+  cat > "${release_dir}/${XRAY_CONFIG_05_INBOUNDS}" << JSON
 {"inbounds":[{"tag":"reality","listen":"0.0.0.0","port":${XRAY_PORT},"protocol":"vless",
 "settings":{"clients":[{"id":"${XRAY_UUID}","flow":"xtls-rprx-vision"}],"decryption":"none"},
 "streamSettings":{"network":"tcp","security":"reality","realitySettings":{"show":false,"dest":"${reality_dest}","xver":0,"serverNames":${server_names},"privateKey":"${XRAY_PRIVATE_KEY}","shortIds":${shortids_pool},"spiderX":"/"}},
@@ -179,7 +186,7 @@ xray::render_vision_reality_inbounds() {
   shortids_pool="$(build_shortids_pool "${XRAY_SHORT_ID}" "${XRAY_SHORT_ID_2:-}" "${XRAY_SHORT_ID_3:-}")"
 
   # Write dual inbound configuration
-  cat > "${release_dir}/05_inbounds.json" << JSON
+  cat > "${release_dir}/${XRAY_CONFIG_05_INBOUNDS}" << JSON
 {"inbounds":[
 {"tag":"vision","listen":"0.0.0.0","port":${XRAY_VISION_PORT},"protocol":"vless",
  "settings":{"clients":[{"id":"${XRAY_UUID_VISION}","flow":"xtls-rprx-vision"}],"decryption":"none","fallbacks":[{"alpn":"h2","dest":${XRAY_FALLBACK_PORT}},{"dest":${XRAY_FALLBACK_PORT}}]},
@@ -204,12 +211,16 @@ xray::set_config_permissions() {
   chmod 0750 "${release_dir}" || true
   chown root:xray "${release_dir}" 2> /dev/null || true
 
+  # Batch set permissions for all config files (performance: log once instead of per-file)
+  local file_count=0
   for f in "${release_dir}"/*.json; do
     [[ -f "${f}" ]] || continue
     chown root:xray "${f}" 2> /dev/null || true
     chmod 0640 "${f}" || true
-    core::log debug "config file permissions set" "$(printf '{"file":"%s"}' "${f}")"
+    ((file_count++))
   done
+
+  core::log debug "config file permissions set" "$(printf '{"dir":"%s","count":%d}' "${release_dir}" "${file_count}")"
 }
 
 # Main function: Orchestrate Xray configuration rendering

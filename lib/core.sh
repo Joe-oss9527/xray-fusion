@@ -77,6 +77,44 @@ core::error_handler() {
 core::ts() { date -u +'%Y-%m-%dT%H:%M:%SZ'; }
 
 ##
+# Format log message for output (internal helper)
+#
+# Internal function used by core::log to format messages.
+# Separated to reduce cyclomatic complexity and improve testability.
+#
+# Arguments:
+#   $1 - Log level (string, required)
+#   $2 - Message (string, required)
+#   $3 - Context JSON (string, required)
+#
+# Globals:
+#   XRF_JSON - If "true", output JSON format
+#
+# Output:
+#   Formatted log line to stdout (caller redirects to stderr)
+#
+# Returns:
+#   0 - Always succeeds
+##
+core::log_format() {
+  local lvl="${1}"
+  local msg="${2}"
+  local ctx="${3}"
+
+  # Normalize fatal/critical to uppercase for visibility in text output
+  local display_lvl="${lvl}"
+  if [[ "${lvl}" == "fatal" || "${lvl}" == "critical" ]]; then
+    display_lvl="${lvl^^}"
+  fi
+
+  if [[ "${XRF_JSON}" == "true" ]]; then
+    printf '{"ts":"%s","level":"%s","msg":"%s","ctx":%s}\n' "$(core::ts)" "${lvl}" "${msg}" "${ctx}"
+  else
+    printf '[%s] %-8s %s %s\n' "$(core::ts)" "${display_lvl}" "${msg}" "${ctx}"
+  fi
+}
+
+##
 # Structured logging to stderr
 #
 # Logs messages in text or JSON format depending on XRF_JSON.
@@ -117,28 +155,14 @@ core::log() {
   shift || true
   local ctx="${1-{} }"
 
-  # Filter debug messages unless XRF_DEBUG is true
-  if [[ "${lvl}" == "debug" && "${XRF_DEBUG}" != "true" ]]; then
-    return 0
-  fi
+  # Early return: filter debug messages unless XRF_DEBUG is true
+  [[ "${lvl}" == "debug" && "${XRF_DEBUG}" != "true" ]] && return 0
 
-  # Normalize fatal/critical to uppercase for visibility in text output
-  local display_lvl="${lvl}"
-  if [[ "${lvl}" == "fatal" || "${lvl}" == "critical" ]]; then
-    display_lvl="${lvl^^}" # Convert to uppercase
-  fi
-
-  # All logs go to stderr to avoid contaminating function outputs
-  if [[ "${XRF_JSON}" == "true" ]]; then
-    printf '{"ts":"%s","level":"%s","msg":"%s","ctx":%s}\n' "$(core::ts)" "${lvl}" "${msg}" "${ctx}" >&2
-  else
-    printf '[%s] %-8s %s %s\n' "$(core::ts)" "${display_lvl}" "${msg}" "${ctx}" >&2
-  fi
+  # Format and output to stderr (avoid contaminating function outputs)
+  core::log_format "${lvl}" "${msg}" "${ctx}" >&2
 
   # Fatal errors exit immediately
-  if [[ "${lvl}" == "fatal" ]]; then
-    exit 1
-  fi
+  [[ "${lvl}" == "fatal" ]] && exit 1
 
   return 0
 }

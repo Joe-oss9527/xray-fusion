@@ -89,26 +89,51 @@ plugins::emit() {
   done
 }
 
+##
+# List plugins from a directory (internal helper)
+#
+# Internal function used by plugins::list to iterate and display plugins.
+# Extracts common logic to reduce code duplication.
+#
+# Arguments:
+#   $1 - Directory pattern (string, required) - e.g., "${av}"/*/plugin.sh
+#   $2 - Format type (string, required) - "detailed" or "simple"
+#
+# Output:
+#   Plugin list to stdout (one per line)
+#
+# Returns:
+#   0 - Always succeeds
+##
+plugins::list_from_dir() {
+  local pattern="${1}"
+  local format="${2:-simple}"
+  local f
+
+  for f in ${pattern}; do
+    [[ -f "${f}" ]] || continue
+    # shellcheck source=/dev/null
+    . "${f}"
+
+    if [[ "${format}" == "detailed" ]]; then
+      printf "  - %-14s %s (v%s)\n" "${XRF_PLUGIN_ID}" "${XRF_PLUGIN_DESC:-}" "${XRF_PLUGIN_VERSION:-0.0.0}"
+    else
+      echo "  - ${XRF_PLUGIN_ID}"
+    fi
+  done
+}
+
 plugins::list() {
   local av en
   av="$(plugins::dir_available)"
   en="$(plugins::dir_enabled)"
+
   echo "Available:"
-  local f
-  for f in "${av}"/*/plugin.sh; do
-    [[ -f "${f}" ]] || continue
-    # shellcheck source=/dev/null
-    . "${f}"
-    printf "  - %-14s %s (v%s)\n" "${XRF_PLUGIN_ID}" "${XRF_PLUGIN_DESC:-}" "${XRF_PLUGIN_VERSION:-0.0.0}"
-  done
+  plugins::list_from_dir "${av}/*/plugin.sh" "detailed"
+
   echo ""
   echo "Enabled:"
-  for f in "${en}"/*.sh; do
-    [[ -f "${f}" ]] || continue
-    # shellcheck source=/dev/null
-    . "${f}"
-    echo "  - ${XRF_PLUGIN_ID}"
-  done
+  plugins::list_from_dir "${en}/*.sh" "simple"
 }
 
 plugins::enable() {

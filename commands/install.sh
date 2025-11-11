@@ -52,9 +52,12 @@ main() {
     core::log info "enabling plugins" "$(printf '{"plugins":"%s"}' "${PLUGINS}")"
     IFS=',' read -ra plugin_list <<< "${PLUGINS}"
     for plugin in "${plugin_list[@]}"; do
-      plugin="$(echo "${plugin}" | xargs)" # trim whitespace
+      # Bash parameter expansion for trimming (faster than echo | xargs)
+      plugin="${plugin#"${plugin%%[![:space:]]*}"}" # trim leading whitespace
+      plugin="${plugin%"${plugin##*[![:space:]]}"}" # trim trailing whitespace
       if [[ -n "${plugin}" ]]; then
-        "${HERE}/commands/plugin.sh" enable "${plugin}"
+        # Direct function call (faster than forking external script)
+        plugins::enable "${plugin}"
       fi
     done
     # Reload enabled plugins after enabling new ones
@@ -81,15 +84,22 @@ main() {
     XRAY_REALITY_DEST="${XRAY_REALITY_DEST}:443"
   fi
   # Generate shortIds pool (3-5 shortIds for multi-client scenarios)
-  # Uses xray::generate_shortid() from services/xray/common.sh
+  # Uses xray::generate_shortids() for batch generation (performance optimization)
   # Tries: xxd (simple) → od (POSIX) → openssl (fallback)
 
-  # Primary shortId (backward compatible)
-  [[ -z "${XRAY_SHORT_ID:-}" ]] && XRAY_SHORT_ID="$(xray::generate_shortid)" || true
-
-  # Additional shortIds for future client differentiation (optional)
-  [[ -z "${XRAY_SHORT_ID_2:-}" ]] && XRAY_SHORT_ID_2="$(xray::generate_shortid)" || true
-  [[ -z "${XRAY_SHORT_ID_3:-}" ]] && XRAY_SHORT_ID_3="$(xray::generate_shortid)" || true
+  # Check if we need to generate any shortIds
+  if [[ -z "${XRAY_SHORT_ID:-}" && -z "${XRAY_SHORT_ID_2:-}" && -z "${XRAY_SHORT_ID_3:-}" ]]; then
+    # Batch generate all shortIds at once (3x faster than individual calls)
+    mapfile -t shortids < <(xray::generate_shortids 3)
+    XRAY_SHORT_ID="${shortids[0]}"
+    XRAY_SHORT_ID_2="${shortids[1]}"
+    XRAY_SHORT_ID_3="${shortids[2]}"
+  else
+    # Fallback: generate missing shortIds individually (backward compatibility)
+    [[ -z "${XRAY_SHORT_ID:-}" ]] && XRAY_SHORT_ID="$(xray::generate_shortid)" || true
+    [[ -z "${XRAY_SHORT_ID_2:-}" ]] && XRAY_SHORT_ID_2="$(xray::generate_shortid)" || true
+    [[ -z "${XRAY_SHORT_ID_3:-}" ]] && XRAY_SHORT_ID_3="$(xray::generate_shortid)" || true
+  fi
 
   # Validate all generated shortIds (hex format, even length, max 16 chars)
   # Use shared validator from lib/validators.sh
@@ -104,11 +114,11 @@ main() {
 
   # Generate private/public key pair if not provided
   if [[ -z "${XRAY_PRIVATE_KEY:-}" && -x "$(xray::bin)" ]]; then
-    local kp
-    kp="$("$(xray::bin)" x25519 2> /dev/null || true)"
-    XRAY_PRIVATE_KEY="$(echo "${kp}" | awk '/PrivateKey:/ {print $2}')"
-    XRAY_PUBLIC_KEY="$(echo "${kp}" | awk '/Password:/ {print $2}')"
-    unset kp
+    local keypair
+    keypair="$("$(xray::bin)" x25519 2> /dev/null || true)"
+    XRAY_PRIVATE_KEY="$(echo "${keypair}" | awk '/PrivateKey:/ {print $2}')"
+    XRAY_PUBLIC_KEY="$(echo "${keypair}" | awk '/Password:/ {print $2}')"
+    unset keypair
   fi
 
   export XRAY_SNIFFING="${XRAY_SNIFFING:-false}"
@@ -122,25 +132,25 @@ main() {
   # Install and start systemd service
   "${HERE}/services/xray/systemd-unit.sh" install
 
-  local ver="unknown"
-  [[ -x "$(xray::bin)" ]] && ver="$("$(xray::bin)" -version 2> /dev/null | awk 'NR==1{print $2}')"
+  local version="unknown"
+  [[ -x "$(xray::bin)" ]] && version="$("$(xray::bin)" -version 2> /dev/null | awk 'NR==1{print $2}')"
   local now
   now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  local st
+  local state
   if [[ "${TOPOLOGY}" == "vision-reality" ]]; then
-    st=$(jq -n --arg name "vision-reality" --arg ver "${ver}" --arg ts "${now}" \
+    state=$(jq -n --arg name "vision-reality" --arg ver "${version}" --arg ts "${now}" \
       --arg vport "${XRAY_VISION_PORT}" --arg rport "${XRAY_REALITY_PORT}" \
       --arg vuuid "${XRAY_UUID_VISION}" --arg ruuid "${XRAY_UUID_REALITY}" \
       --arg domain "${XRAY_DOMAIN}" --arg sni "${XRAY_SNI}" --arg sid "${XRAY_SHORT_ID:-}" --arg pbk "${XRAY_PUBLIC_KEY:-}" \
       '{name:$name,version:$ver,installed_at:$ts,xray:{vision_port:($vport|tonumber),reality_port:($rport|tonumber),uuid_vision:$vuuid,uuid_reality:$ruuid,domain:$domain,reality_sni:$sni,short_id:$sid,reality_public_key:$pbk}}')
   else
-    st=$(jq -n --arg name "reality-only" --arg ver "${ver}" --arg ts "${now}" \
+    state=$(jq -n --arg name "reality-only" --arg ver "${version}" --arg ts "${now}" \
       --arg port "${XRAY_PORT}" --arg uuid "${XRAY_UUID}" --arg sni "${XRAY_SNI}" --arg sid "${XRAY_SHORT_ID:-}" --arg pbk "${XRAY_PUBLIC_KEY:-}" \
       '{name:$name,version:$ver,installed_at:$ts,xray:{port:($port|tonumber),uuid:$uuid,reality_sni:$sni,short_id:$sid,reality_public_key:$pbk}}')
   fi
-  state::save "${st}"
+  state::save "${state}"
 
   "${HERE}/services/xray/client-links.sh" "${TOPOLOGY}"
-  core::log info "Install complete" "$(printf '{"topology":"%s","version":"%s"}' "${TOPOLOGY}" "${ver}")"
+  core::log info "Install complete" "$(printf '{"topology":"%s","version":"%s"}' "${TOPOLOGY}" "${version}")"
 }
 main "${@}"
