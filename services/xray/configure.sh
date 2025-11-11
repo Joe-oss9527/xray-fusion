@@ -211,12 +211,16 @@ xray::set_config_permissions() {
   chmod 0750 "${release_dir}" || true
   chown root:xray "${release_dir}" 2> /dev/null || true
 
+  # Batch set permissions for all config files (performance: log once instead of per-file)
+  local file_count=0
   for f in "${release_dir}"/*.json; do
     [[ -f "${f}" ]] || continue
     chown root:xray "${f}" 2> /dev/null || true
     chmod 0640 "${f}" || true
-    core::log debug "config file permissions set" "$(printf '{"file":"%s"}' "${f}")"
+    ((file_count++))
   done
+
+  core::log debug "config file permissions set" "$(printf '{"dir":"%s","count":%d}' "${release_dir}" "${file_count}")"
 }
 
 # Main function: Orchestrate Xray configuration rendering

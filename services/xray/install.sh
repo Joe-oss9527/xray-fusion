@@ -60,7 +60,8 @@ xray::install() {
   fi
 
   if [[ -z "${sha}" ]]; then
-    sha="$(curl -fsSL "${url}.dgst" 2> /dev/null | awk 'match($0,/^SHA2?-?256[= ] *([0-9A-Fa-f]{64})/,m){print m[1]; exit} match($0,/^SHA256 \([^)]+\) = ([0-9A-Fa-f]{64})/,m){print m[1]; exit} match($0,/^([0-9A-Fa-f]{64})[[:space:]]+/,m){print m[1]; exit}')" || true
+    # Simplified SHA256 extraction: grep is faster and simpler than complex awk regex
+    sha="$(curl -fsSL "${url}.dgst" 2> /dev/null | grep -oE '[0-9A-Fa-f]{64}' | head -1)" || true
   fi
 
   # Security: Validate SHA256 format regardless of source
