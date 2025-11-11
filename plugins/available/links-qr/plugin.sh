@@ -22,7 +22,7 @@ links_qr::links_render() {
 
   # Check if qrencode is available
   if ! command -v qrencode > /dev/null 2>&1; then
-    core::log warn "qrencode not found, skipping QR generation" "$(printf '{"hint":"run 'xrf plugin enable links-qr' to auto-install"}')"
+    core::log warn "qrencode not found, skipping QR generation" '{"hint":"run: xrf plugin enable links-qr"}'
     return 0
   fi
 
