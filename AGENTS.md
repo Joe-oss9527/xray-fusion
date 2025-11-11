@@ -25,7 +25,7 @@
 - Namespacing: `namespace::function` (e.g., `core::log`, `io::atomic_write`).
 - Variables: lowercase `local` vars; exported/env vars UPPER_SNAKE (e.g., `XRAY_*`, `XRF_*`).
 - File names: kebab‑case; plugins use ID `[a-zA-Z0-9_-]+` and functions via `plugins::fn_prefix`.
-- Use helpers: `io::ensure_dir`, `io::atomic_write`, `core::log`, `core::with_flock`.
+- Use helpers: `io::ensure_dir`, `io::atomic_write`, `core::log`, `core::with_flock`, `core::ensure_lock_writable`, `xray::generate_shortid`.
 
 ## Development Principles
 - **System debugging, no guessing**: Use logs to analyze and locate issues based on actual phenomena.
@@ -33,6 +33,76 @@
 - **Consult official docs first**: Avoid deprecated or outdated implementations.
 - **Keep code clean**: No unnecessary backward compatibility; delete incomplete/deprecated code.
 - **Scriptable everything**: Ensure all operations are parameterized via scripts, avoid manual intervention.
+- **Code reuse over duplication**: Extract common logic into reusable functions when used 2+ times.
+
+## Code Reuse Principles
+
+To maintain code quality and prevent duplication, follow these guidelines:
+
+### When to Extract a Function
+- **Duplication threshold**: Extract when same logic appears 2+ times
+- **Location priority**: Place in `lib/` for core utilities, `modules/` for helpers, `services/` for domain-specific
+- **Standalone scripts**: Create lightweight compatible versions when script cannot source shared libs
+
+### Key Reusable Functions
+
+**Core Utilities** (`lib/core.sh`):
+- `core::log(level, message, context)` - Structured logging (text/JSON)
+- `core::with_flock(lock, command...)` - Execute with exclusive file lock
+- `core::ensure_lock_writable(lock_file)` - Fix lock file ownership/permissions (CWE-283)
+- `core::retry(attempts, command...)` - Retry with exponential backoff
+
+**Xray Utilities** (`services/xray/common.sh`):
+- `xray::generate_shortid()` - Generate 16-char hex shortId (xxd → od → openssl)
+- `xray::prefix()`, `xray::etc()`, `xray::confbase()` - Path helpers
+
+**I/O Utilities** (`modules/io.sh`):
+- `io::ensure_dir(dir, mode)` - Create directory with sudo fallback
+- `io::atomic_write(file, mode)` - Atomic file write from stdin
+- `io::writable(path)` - Check if path is writable
+
+**Validators** (`lib/validators.sh`):
+- `validators::domain(domain)` - RFC-compliant domain validation (1918/3927/6761/4193/4291)
+- `validators::shortid(id)` - Validate shortId format
+- `validators::port(port)` - Validate TCP/UDP port
+
+### Standalone Script Pattern
+
+For scripts that cannot source shared libraries (e.g., `/usr/local/bin/caddy-cert-sync`), define lightweight compatible versions:
+
+```bash
+##
+# Standalone version of core::ensure_lock_writable
+#
+# Lightweight version for standalone scripts.
+# Maintains API compatibility with lib/core.sh.
+##
+ensure_lock_writable() {
+  local lock="${1}"
+  [[ ! -f "${lock}" ]] && return 0
+
+  # Fix ownership
+  if ! chown "$(id -u):$(id -g)" "${lock}" 2>/dev/null; then
+    command -v sudo >/dev/null && sudo chown "$(id -u):$(id -g)" "${lock}" 2>/dev/null || return 1
+  fi
+
+  # Fix permissions
+  chmod 0644 "${lock}" 2>/dev/null || return 1
+}
+```
+
+**Key Points**:
+- Keep API identical to original function
+- Document as "standalone version of X"
+- Note compatibility in comments
+- Keep implementation minimal
+
+### Anti-Patterns to Avoid
+- ❌ Copy-pasting function implementations
+- ❌ Inline directory creation (`mkdir -p`) when `io::ensure_dir()` exists
+- ❌ Inline lock management when `core::with_flock()` exists
+- ❌ Custom hex generation when `xray::generate_shortid()` exists
+- ❌ Simplified validation when RFC-compliant version exists
 
 ## Security Best Practices
 
@@ -370,7 +440,7 @@ exec 200>> "${lock}"  # Now succeeds for all users
 **Reference**: See `lib/core.sh::with_flock()` for production implementation
 
 ## Testing Guidelines
-- Test framework: bats-core with 96 unit tests across 5 test files.
+- Test framework: bats-core with 119 unit tests across 5 test files.
 - Fast feedback: `make lint && make fmt && make test-unit`.
 - Run tests:
   - `make test` — Run all tests (unit + integration)
@@ -380,7 +450,11 @@ exec 200>> "${lock}"  # Now succeeds for all users
   - Dry config test is automatic and cannot be skipped (see ADR-007 in CLAUDE.md).
   - Avoid touching system paths by overriding `XRF_PREFIX` and `XRF_ETC` to a temp dir.
 - Prefer validating inputs and error codes; don't print secrets.
-- Test coverage: ~80% (96 tests across lib/args.sh, lib/core.sh, lib/plugins.sh, modules/io.sh, services/xray/common.sh)
+- Test coverage: ~85% (119 tests across lib/args.sh, lib/core.sh, lib/plugins.sh, lib/validators.sh, modules/io.sh, services/xray/common.sh)
+  - Code reuse tests: 6 tests for xray::generate_shortid()
+  - Log format tests: 5 tests for unified logging
+  - Security tests: 12 tests for RFC-compliant domain validation
+  - Recent additions (2025-11): +23 tests as part of code duplication elimination
 
 ## Xray Configuration Best Practices
 
