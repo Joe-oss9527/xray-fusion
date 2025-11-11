@@ -319,7 +319,9 @@ deps::install_packages() {
   esac
 
   # Execute installation
-  if "${cmd[@]}" > /dev/null 2>&1; then
+  # Keep stderr visible for sudo password prompts and error messages
+  # Only redirect stdout to hide verbose package manager output
+  if "${cmd[@]}" > /dev/null; then
     if declare -f core::log > /dev/null 2>&1; then
       core::log info "packages installed successfully" "$(printf '{"packages":"%s"}' "${packages[*]}")"
     else
