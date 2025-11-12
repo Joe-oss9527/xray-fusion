@@ -217,7 +217,7 @@ xray::set_config_permissions() {
     [[ -f "${f}" ]] || continue
     chown root:xray "${f}" 2> /dev/null || true
     chmod 0640 "${f}" || true
-    ((file_count++))
+    ((file_count+=1))
   done
 
   core::log debug "config file permissions set" "$(printf '{"dir":"%s","count":%d}' "${release_dir}" "${file_count}")"
