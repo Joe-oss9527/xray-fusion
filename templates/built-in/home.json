@@ -1,0 +1,40 @@
+{
+  "metadata": {
+    "id": "home",
+    "name": "Home User",
+    "description": "Optimized for home users with single device access",
+    "category": "personal",
+    "author": "xray-fusion",
+    "version": "1.0.0",
+    "min_xray_version": "v1.8.0"
+  },
+  "config": {
+    "topology": "reality-only",
+    "xray": {
+      "version": "latest",
+      "port": 443,
+      "sni": "www.microsoft.com",
+      "reality_dest": "www.microsoft.com:443",
+      "sniffing": false
+    },
+    "plugins": [],
+    "security": {
+      "level": "moderate",
+      "features": {
+        "tls13_only": true,
+        "cert_pinning": false,
+        "firewall_rules": false
+      }
+    },
+    "performance": {
+      "max_connections": 100,
+      "buffer_size": "default"
+    }
+  },
+  "notes": [
+    "Suitable for 1-2 users",
+    "No domain ownership required",
+    "Moderate security settings",
+    "Easy to set up and maintain"
+  ]
+}

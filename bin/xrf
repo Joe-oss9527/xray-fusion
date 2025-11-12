@@ -13,6 +13,7 @@ Usage: xrf <command>
   links       Print client links
   test-sni    Test SNI domain for REALITY protocol compatibility
   health      Run post-installation health check
+  templates   Manage configuration templates
   plugin      Manage plugins (list/enable/disable/info)
   help        Show this help
 EOF
@@ -41,6 +42,10 @@ case "${1-}" in
   health)
     shift || true
     "${HERE}/commands/health.sh" "$@"
+    ;;
+  templates)
+    shift || true
+    "${HERE}/commands/templates.sh" "$@"
     ;;
   plugin)
     shift || true
