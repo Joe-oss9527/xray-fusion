@@ -5,6 +5,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 . "${HERE}/lib/defaults.sh"
 . "${HERE}/lib/args.sh"
 . "${HERE}/lib/uuid.sh"
+. "${HERE}/lib/templates.sh"
 . "${HERE}/lib/preview.sh"
 . "${HERE}/lib/sni_validator.sh"
 . "${HERE}/lib/health_check.sh"
@@ -50,6 +51,56 @@ main() {
 
   # Export arguments as environment variables
   args::export_vars
+
+  # Apply template if specified (template values used as defaults, can be overridden by CLI args)
+  if [[ -n "${TEMPLATE}" ]]; then
+    core::log info "applying template" "$(printf '{"template":"%s"}' "${TEMPLATE}")"
+
+    # Validate template exists and is valid
+    if ! templates::validate "${TEMPLATE}"; then
+      core::log error "invalid template" "$(printf '{"template":"%s"}' "${TEMPLATE}")"
+      exit 1
+    fi
+
+    # Export template variables (prefixed with TEMPLATE_*)
+    templates::export "${TEMPLATE}"
+
+    # Apply template defaults only if not explicitly set by CLI
+    # Topology: use template only if user didn't provide --topology
+    if [[ -z "${_TOPOLOGY_EXPLICIT}" && -n "${TEMPLATE_TOPOLOGY:-}" ]]; then
+      TOPOLOGY="${TEMPLATE_TOPOLOGY}"
+      core::log debug "topology from template" "$(printf '{"topology":"%s"}' "${TOPOLOGY}")"
+    fi
+
+    # Version: use template only if user didn't provide --version
+    if [[ -z "${_VERSION_EXPLICIT}" && -n "${TEMPLATE_VERSION:-}" ]]; then
+      VERSION="${TEMPLATE_VERSION}"
+      core::log debug "version from template" "$(printf '{"version":"%s"}' "${VERSION}")"
+    fi
+
+    # Plugins: merge template plugins with CLI plugins
+    if [[ -n "${TEMPLATE_PLUGINS:-}" ]]; then
+      if [[ -z "${_PLUGINS_EXPLICIT}" ]]; then
+        # No CLI plugins, use template plugins
+        PLUGINS="${TEMPLATE_PLUGINS}"
+        core::log debug "plugins from template" "$(printf '{"plugins":"%s"}' "${PLUGINS}")"
+      else
+        # Merge: CLI plugins take priority, add template plugins not already specified
+        PLUGINS="${PLUGINS},${TEMPLATE_PLUGINS}"
+        core::log debug "plugins merged" "$(printf '{"cli":"%s","template":"%s"}' "${PLUGINS%%,*}" "${TEMPLATE_PLUGINS}")"
+      fi
+    fi
+
+    # Export Xray configuration from template (used later in configuration)
+    [[ -n "${TEMPLATE_SNI:-}" ]] && export XRAY_SNI="${TEMPLATE_SNI}"
+    [[ -n "${TEMPLATE_REALITY_DEST:-}" ]] && export XRAY_REALITY_DEST="${TEMPLATE_REALITY_DEST}"
+    [[ -n "${TEMPLATE_SNIFFING:-}" ]] && export XRAY_SNIFFING="${TEMPLATE_SNIFFING}"
+    [[ -n "${TEMPLATE_PORT:-}" ]] && export XRAY_PORT="${TEMPLATE_PORT}"
+    [[ -n "${TEMPLATE_VISION_PORT:-}" ]] && export XRAY_VISION_PORT="${TEMPLATE_VISION_PORT}"
+    [[ -n "${TEMPLATE_REALITY_PORT:-}" ]] && export XRAY_REALITY_PORT="${TEMPLATE_REALITY_PORT}"
+
+    core::log info "template applied" "$(printf '{"template":"%s","topology":"%s"}' "${TEMPLATE}" "${TOPOLOGY}")"
+  fi
 
   # Enable plugins if specified
   if [[ -n "${PLUGINS}" ]]; then

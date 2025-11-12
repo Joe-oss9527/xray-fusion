@@ -22,6 +22,12 @@ args::init() {
   UUID_FROM_STRING=""
   XRF_YES="false"
   XRF_DRY_RUN="false"
+  TEMPLATE=""
+
+  # Tracking flags for explicit CLI arguments (used by template override logic)
+  _TOPOLOGY_EXPLICIT=""
+  _VERSION_EXPLICIT=""
+  _PLUGINS_EXPLICIT=""
 }
 
 # Parse command line arguments
@@ -31,6 +37,7 @@ args::parse() {
       --topology | -t)
         args::validate_topology "${2:-}" || return 1
         TOPOLOGY="${2}"
+        _TOPOLOGY_EXPLICIT="true"
         shift 2
         ;;
       --domain | -d)
@@ -41,10 +48,12 @@ args::parse() {
       --version | -v)
         args::validate_version "${2:-}" || return 1
         VERSION="${2}"
+        _VERSION_EXPLICIT="true"
         shift 2
         ;;
       --plugins | -p)
         PLUGINS="${2:-}"
+        _PLUGINS_EXPLICIT="true"
         shift 2
         ;;
       --uuid)
@@ -53,6 +62,10 @@ args::parse() {
         ;;
       --uuid-from-string)
         UUID_FROM_STRING="${2:-}"
+        shift 2
+        ;;
+      --template)
+        TEMPLATE="${2:-}"
         shift 2
         ;;
       --debug)
@@ -91,7 +104,8 @@ args::parse() {
   fi
 
   # Export variables for use by other modules
-  export TOPOLOGY DOMAIN VERSION PLUGINS DEBUG UUID UUID_FROM_STRING XRF_YES XRF_DRY_RUN
+  export TOPOLOGY DOMAIN VERSION PLUGINS DEBUG UUID UUID_FROM_STRING XRF_YES XRF_DRY_RUN TEMPLATE
+  export _TOPOLOGY_EXPLICIT _VERSION_EXPLICIT _PLUGINS_EXPLICIT
 
   return 0
 }
@@ -189,6 +203,7 @@ Options:
   --topology, -t <type>         Installation topology (reality-only|vision-reality)
   --domain, -d <domain>         Domain for vision-reality topology (required)
   --version, -v <version>       Xray version to install (default: latest)
+  --template <id>               Use pre-built template (home|office|server)
   --plugins, -p <list>          Comma-separated list of plugins to enable
   --uuid <uuid>                 Custom UUID (default: auto-generated)
   --uuid-from-string <string>   Generate UUID from custom string
@@ -201,6 +216,12 @@ Examples:
   # Reality-only topology
   --topology reality-only
 
+  # Install with home template (quick start)
+  --template home
+
+  # Install with office template and custom domain
+  --template office --domain vpn.company.com
+
   # Vision-Reality with domain and plugins
   --topology vision-reality --domain your.domain.com --plugins cert-auto
 
@@ -212,6 +233,9 @@ Examples:
 
   # Specific version
   --version v1.8.1
+
+  # List available templates
+  xrf templates list
 
 EOF
 }
