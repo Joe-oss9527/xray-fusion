@@ -10,9 +10,11 @@
 - ✅ **自动化部署**: 一键安装，开箱即用
 - ✅ **双拓扑支持**: Reality-only / Vision-Reality 双模式
 - ✅ **配置模板**: 预定义场景模板（个人/团队/生产），快速部署
+- ✅ **备份和恢复**: 自动备份、SHA256验证、原子恢复
+- ✅ **日志管理**: 多级别过滤、实时追踪、统计导出
 - ✅ **自动证书管理**: 集成 Caddy + Let's Encrypt
 - ✅ **插件系统**: 模块化扩展，按需启用
-- ✅ **全面测试**: 125个单元测试 + 集成测试，~85% 覆盖率
+- ✅ **全面测试**: 472个单元测试 + 集成测试，~85% 覆盖率
 - ✅ **安全加固**: RFC 合规验证，systemd 安全加固
 - ✅ **完善文档**: ShellDoc API 文档，故障排查指南
 
@@ -185,6 +187,87 @@ curl -sL install.sh | bash -s -- --template server --topology reality-only
 # 多个插件
 --plugins cert-auto,firewall,logrotate-obs
 ```
+
+## 日志查看
+
+### 基本用法
+```bash
+# 查看最近100行日志
+bin/xrf logs
+
+# 查看实时日志
+bin/xrf logs --follow
+
+# 按级别过滤
+bin/xrf logs --level error   # 仅错误
+bin/xrf logs --level warn    # 警告和错误
+
+# 时间范围
+bin/xrf logs --since "1 hour ago"
+bin/xrf logs --since "2023-12-01 10:00:00"
+```
+
+### 日志导出
+```bash
+# 导出到文件
+bin/xrf logs --export /path/to/logs.txt
+
+# 导出错误日志
+bin/xrf logs --level error --export errors.txt
+
+# 统计信息
+bin/xrf logs --stats
+```
+
+## 备份和恢复
+
+### 创建备份
+```bash
+# 自动备份（系统生成名称）
+bin/xrf backup create
+
+# 指定备份名称
+bin/xrf backup create pre-upgrade
+
+# 安装时自动备份
+# 如果检测到现有安装，install 命令会自动创建备份
+bin/xrf install --topology reality-only
+# 输出：[INFO] Automatic backup created: pre-install-20231201-120000
+```
+
+### 查看备份
+```bash
+# 列出所有备份
+bin/xrf backup list
+
+# JSON 格式输出
+XRF_JSON=true bin/xrf backup list
+```
+
+### 恢复备份
+```bash
+# 恢复指定备份（自动创建恢复前备份）
+bin/xrf backup restore pre-upgrade-20231201-120000
+
+# 列出备份后选择恢复
+bin/xrf backup list
+bin/xrf backup restore <backup-name>
+```
+
+### 验证和删除
+```bash
+# 验证备份完整性（SHA256）
+bin/xrf backup verify pre-upgrade-20231201-120000
+
+# 删除备份
+bin/xrf backup delete old-backup-20231101-090000
+```
+
+### 备份策略
+- **自动备份**：安装前自动创建备份（如果存在现有安装）
+- **完整性验证**：SHA256 哈希验证确保备份完整性
+- **自动清理**：保留最近 10 个备份，自动删除旧备份
+- **原子恢复**：恢复前自动创建当前配置备份，支持回滚
 
 ## 手动管理
 

@@ -10,6 +10,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 . "${HERE}/lib/sni_validator.sh"
 . "${HERE}/lib/health_check.sh"
 . "${HERE}/lib/plugins.sh"
+. "${HERE}/lib/backup.sh"
 . "${HERE}/modules/state.sh"
 . "${HERE}/services/xray/common.sh"
 
@@ -134,6 +135,20 @@ main() {
     exit 1
   fi
 
+  # Auto-backup before installation (if existing installation found)
+  local state_file
+  state_file="$(state::path)"
+  if [[ -f "${state_file}" ]]; then
+    core::log info "existing installation detected, creating automatic backup" "{}"
+    local auto_backup_name="pre-install-$(date +%Y%m%d-%H%M%S)"
+    if backup::create "${auto_backup_name}" > /dev/null 2>&1; then
+      core::log info "automatic backup created" "$(printf '{"name":"%s"}' "${auto_backup_name}")"
+    else
+      core::log warn "failed to create automatic backup" '{"suggestion":"continuing with installation"}'
+      # Continue anyway - user confirmed installation
+    fi
+  fi
+
   plugins::emit install_pre "topology=${TOPOLOGY}" "version=${VERSION}"
   "${HERE}/services/xray/install.sh" --version "${VERSION}"
 
@@ -184,7 +199,7 @@ main() {
   core::log info "validating SNI domain" "$(printf '{"domain":"%s"}' "${sni_domain}")"
 
   # Run SNI validation silently (log results only)
-  if ! sni::validate "${sni_domain}" >/dev/null 2>&1; then
+  if ! sni::validate "${sni_domain}" > /dev/null 2>&1; then
     core::log warn "SNI validation failed" "$(printf '{"domain":"%s","suggestion":"REALITY may work but with reduced reliability"}' "${sni_domain}")"
   else
     core::log info "SNI validation passed" "$(printf '{"domain":"%s"}' "${sni_domain}")"

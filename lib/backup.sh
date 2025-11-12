@@ -18,7 +18,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Backup storage location
 readonly BACKUP_DIR="/var/lib/xray-fusion/backups"
-readonly BACKUP_RETENTION=10  # Keep last 10 backups
+readonly BACKUP_RETENTION=10 # Keep last 10 backups
 
 ##
 # Get backup directory path
@@ -114,7 +114,7 @@ backup::create() {
   fi
 
   # Copy xray configuration
-  cp -a "${xray_etc}" "${tmpdir}/xray" 2>/dev/null || {
+  cp -a "${xray_etc}" "${tmpdir}/xray" 2> /dev/null || {
     core::log error "failed to copy xray configuration" "{}"
     return 1
   }
@@ -123,19 +123,19 @@ backup::create() {
   local state_file
   state_file="$(state::path)"
   if [[ -f "${state_file}" ]]; then
-    cp "${state_file}" "${tmpdir}/state.json" 2>/dev/null || {
+    cp "${state_file}" "${tmpdir}/state.json" 2> /dev/null || {
       core::log warn "failed to copy state file" "$(printf '{"file":"%s"}' "${state_file}")"
     }
   fi
 
   # Create tar.gz archive
-  if ! tar -czf "${backup_file}" -C "${tmpdir}" . 2>/dev/null; then
+  if ! tar -czf "${backup_file}" -C "${tmpdir}" . 2> /dev/null; then
     core::log error "failed to create backup archive" "$(printf '{"file":"%s"}' "${backup_file}")"
     return 1
   fi
 
   # Set restrictive permissions
-  chmod 0600 "${backup_file}" 2>/dev/null || true
+  chmod 0600 "${backup_file}" 2> /dev/null || true
 
   # Calculate backup hash
   local backup_hash
@@ -143,7 +143,7 @@ backup::create() {
 
   # Create metadata
   local backup_size
-  backup_size=$(stat -f%z "${backup_file}" 2>/dev/null || stat -c%s "${backup_file}" 2>/dev/null || echo "0")
+  backup_size=$(stat -f%z "${backup_file}" 2> /dev/null || stat -c%s "${backup_file}" 2> /dev/null || echo "0")
 
   jq -n \
     --arg name "${name}" \
@@ -164,7 +164,7 @@ backup::create() {
       created_at: (now | todate)
     }' > "${metadata_file}"
 
-  chmod 0600 "${metadata_file}" 2>/dev/null || true
+  chmod 0600 "${metadata_file}" 2> /dev/null || true
 
   core::log info "backup created successfully" "$(printf '{"name":"%s","size":"%s bytes","hash":"%s"}' "${name}" "${backup_size}" "${backup_hash:0:8}")"
 
@@ -209,7 +209,7 @@ backup::list() {
   local metadata_files=()
   while IFS= read -r file; do
     metadata_files+=("${file}")
-  done < <(find "${backup_dir}" -name "*.metadata.json" -type f 2>/dev/null | sort -r)
+  done < <(find "${backup_dir}" -name "*.metadata.json" -type f 2> /dev/null | sort -r)
 
   if [[ "${#metadata_files[@]}" -eq 0 ]]; then
     if [[ "${XRF_JSON}" == "true" ]]; then
@@ -335,15 +335,15 @@ backup::restore() {
   tmpdir=$(mktemp -d -t xray-restore.XXXXXX)
   trap 'rm -rf "${tmpdir}" 2>/dev/null || true' EXIT INT TERM
 
-  if ! tar -xzf "${backup_file}" -C "${tmpdir}" 2>/dev/null; then
+  if ! tar -xzf "${backup_file}" -C "${tmpdir}" 2> /dev/null; then
     core::log error "failed to extract backup" "$(printf '{"file":"%s"}' "${backup_file}")"
     return 1
   fi
 
   # Stop xray service before restore
-  if systemctl is-active --quiet xray.service 2>/dev/null; then
+  if systemctl is-active --quiet xray.service 2> /dev/null; then
     core::log info "stopping xray service" "{}"
-    systemctl stop xray.service 2>/dev/null || {
+    systemctl stop xray.service 2> /dev/null || {
       core::log warn "failed to stop xray service" "{}"
     }
   fi
@@ -355,22 +355,22 @@ backup::restore() {
   if [[ -d "${tmpdir}/xray" ]]; then
     # Backup current configuration
     if [[ -d "${xray_etc}" ]]; then
-      mv "${xray_etc}" "${xray_etc}.old" 2>/dev/null || {
+      mv "${xray_etc}" "${xray_etc}.old" 2> /dev/null || {
         core::log error "failed to backup current configuration" "{}"
         return 1
       }
     fi
 
     # Restore from backup
-    if ! cp -a "${tmpdir}/xray" "${xray_etc}" 2>/dev/null; then
+    if ! cp -a "${tmpdir}/xray" "${xray_etc}" 2> /dev/null; then
       core::log error "failed to restore xray configuration" "{}"
       # Attempt rollback
-      [[ -d "${xray_etc}.old" ]] && mv "${xray_etc}.old" "${xray_etc}" 2>/dev/null
+      [[ -d "${xray_etc}.old" ]] && mv "${xray_etc}.old" "${xray_etc}" 2> /dev/null
       return 1
     fi
 
     # Remove backup of old configuration
-    rm -rf "${xray_etc}.old" 2>/dev/null || true
+    rm -rf "${xray_etc}.old" 2> /dev/null || true
   fi
 
   # Restore state file
@@ -379,14 +379,14 @@ backup::restore() {
 
   if [[ -f "${tmpdir}/state.json" ]]; then
     io::ensure_dir "$(dirname "${state_file}")" 0755
-    cp "${tmpdir}/state.json" "${state_file}" 2>/dev/null || {
+    cp "${tmpdir}/state.json" "${state_file}" 2> /dev/null || {
       core::log warn "failed to restore state file" "$(printf '{"file":"%s"}' "${state_file}")"
     }
   fi
 
   # Start xray service
   core::log info "starting xray service" "{}"
-  if ! systemctl start xray.service 2>/dev/null; then
+  if ! systemctl start xray.service 2> /dev/null; then
     core::log error "failed to start xray service" '{}'
     return 1
   fi
@@ -432,7 +432,7 @@ backup::delete() {
 
   # Delete backup file
   if [[ -f "${backup_file}" ]]; then
-    rm -f "${backup_file}" 2>/dev/null || {
+    rm -f "${backup_file}" 2> /dev/null || {
       core::log error "failed to delete backup file" "$(printf '{"file":"%s"}' "${backup_file}")"
       return 1
     }
@@ -440,7 +440,7 @@ backup::delete() {
 
   # Delete metadata file
   if [[ -f "${metadata_file}" ]]; then
-    rm -f "${metadata_file}" 2>/dev/null || {
+    rm -f "${metadata_file}" 2> /dev/null || {
       core::log warn "failed to delete metadata file" "$(printf '{"file":"%s"}' "${metadata_file}")"
     }
   fi
@@ -536,7 +536,7 @@ backup::_cleanup_old() {
   local backup_files=()
   while IFS= read -r file; do
     backup_files+=("${file}")
-  done < <(find "${backup_dir}" -name "*.tar.gz" -type f 2>/dev/null | sort)
+  done < <(find "${backup_dir}" -name "*.tar.gz" -type f 2> /dev/null | sort)
 
   local count="${#backup_files[@]}"
 
@@ -548,13 +548,13 @@ backup::_cleanup_old() {
 
   # Delete oldest backups
   local to_delete=$((count - BACKUP_RETENTION))
-  for ((i=0; i<to_delete; i++)); do
+  for ((i = 0; i < to_delete; i++)); do
     local backup_file="${backup_files[i]}"
     local backup_name
     backup_name=$(basename "${backup_file}" .tar.gz)
 
     core::log debug "deleting old backup" "$(printf '{"name":"%s"}' "${backup_name}")"
-    backup::delete "${backup_name}" >/dev/null 2>&1 || true
+    backup::delete "${backup_name}" > /dev/null 2>&1 || true
   done
 
   return 0
