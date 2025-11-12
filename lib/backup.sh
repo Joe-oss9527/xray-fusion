@@ -99,9 +99,9 @@ backup::create() {
   version=$(echo "${state}" | jq -r '.version // "unknown"')
 
   # Create temporary directory for backup staging
+  # Use hidden prefix to avoid conflicts if cleanup fails (CWE-362)
   local tmpdir
-  tmpdir=$(mktemp -d -t xray-backup.XXXXXX)
-  trap 'rm -rf "${tmpdir}" 2>/dev/null || true' EXIT INT TERM
+  tmpdir=$(mktemp -d -t .xray-backup.XXXXXX)
 
   # Copy configuration files
   local xray_etc
@@ -109,14 +109,16 @@ backup::create() {
 
   if [[ ! -d "${xray_etc}" ]]; then
     core::log error "xray configuration directory not found" "$(printf '{"path":"%s"}' "${xray_etc}")"
+    rm -rf "${tmpdir}" 2> /dev/null || true
     return 1
   fi
 
   # Copy xray configuration
-  cp -a "${xray_etc}" "${tmpdir}/xray" 2> /dev/null || {
+  if ! cp -a "${xray_etc}" "${tmpdir}/xray" 2> /dev/null; then
     core::log error "failed to copy xray configuration" "{}"
+    rm -rf "${tmpdir}" 2> /dev/null || true
     return 1
-  }
+  fi
 
   # Copy state file
   local state_file
@@ -130,8 +132,12 @@ backup::create() {
   # Create tar.gz archive
   if ! tar -czf "${backup_file}" -C "${tmpdir}" . 2> /dev/null; then
     core::log error "failed to create backup archive" "$(printf '{"file":"%s"}' "${backup_file}")"
+    rm -rf "${tmpdir}" 2> /dev/null || true
     return 1
   fi
+
+  # Cleanup temporary directory (archive created successfully)
+  rm -rf "${tmpdir}" 2> /dev/null || true
 
   # Set restrictive permissions
   chmod 0600 "${backup_file}" 2> /dev/null || true
@@ -331,12 +337,13 @@ backup::restore() {
   fi
 
   # Extract backup to temporary directory
+  # Use hidden prefix to avoid conflicts if cleanup fails
   local tmpdir
-  tmpdir=$(mktemp -d -t xray-restore.XXXXXX)
-  trap 'rm -rf "${tmpdir}" 2>/dev/null || true' EXIT INT TERM
+  tmpdir=$(mktemp -d -t .xray-restore.XXXXXX)
 
   if ! tar -xzf "${backup_file}" -C "${tmpdir}" 2> /dev/null; then
     core::log error "failed to extract backup" "$(printf '{"file":"%s"}' "${backup_file}")"
+    rm -rf "${tmpdir}" 2> /dev/null || true
     return 1
   fi
 
@@ -355,10 +362,11 @@ backup::restore() {
   if [[ -d "${tmpdir}/xray" ]]; then
     # Backup current configuration
     if [[ -d "${xray_etc}" ]]; then
-      mv "${xray_etc}" "${xray_etc}.old" 2> /dev/null || {
+      if ! mv "${xray_etc}" "${xray_etc}.old" 2> /dev/null; then
         core::log error "failed to backup current configuration" "{}"
+        rm -rf "${tmpdir}" 2> /dev/null || true
         return 1
-      }
+      fi
     fi
 
     # Restore from backup
@@ -366,6 +374,7 @@ backup::restore() {
       core::log error "failed to restore xray configuration" "{}"
       # Attempt rollback
       [[ -d "${xray_etc}.old" ]] && mv "${xray_etc}.old" "${xray_etc}" 2> /dev/null
+      rm -rf "${tmpdir}" 2> /dev/null || true
       return 1
     fi
 
@@ -383,6 +392,9 @@ backup::restore() {
       core::log warn "failed to restore state file" "$(printf '{"file":"%s"}' "${state_file}")"
     }
   fi
+
+  # Cleanup temporary directory (restoration complete)
+  rm -rf "${tmpdir}" 2> /dev/null || true
 
   # Start xray service
   core::log info "starting xray service" "{}"

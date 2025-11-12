@@ -62,9 +62,13 @@ xray::install() {
 
   if [[ -z "${sha}" ]]; then
     local dgst_content
-    dgst_content="$(curl -fsSL "${url}.dgst" 2> /dev/null)" || true
-    if [[ -n "${dgst_content}" ]]; then
+    core::log debug "downloading checksum file with retry" "$(printf '{"url":"%s.dgst"}' "${url}")"
+    # Retry checksum download up to 3 times with exponential backoff
+    if dgst_content="$(core::retry 3 curl -fsSL "${url}.dgst" 2>&1)"; then
+      core::log debug "checksum file downloaded successfully" "{}"
       sha="$(xray::extract_sha256_from_dgst "${dgst_content}")"
+    else
+      core::log warn "checksum download failed after retries" "$(printf '{"dgst_url":"%s.dgst"}' "${url}")"
     fi
   fi
 
@@ -75,7 +79,8 @@ xray::install() {
       exit 5
     fi
   else
-    core::log error "missing SHA256 checksum" "$(printf '{"dgst_url":"%s.dgst","hint":"Set XRAY_SHA256 env var or check network connectivity"}' "${url}")"
+    core::log error "missing SHA256 checksum" "$(printf '{"dgst_url":"%s.dgst","hint":"Network issue or file unavailable"}' "${url}")"
+    core::log info "workaround: manually verify and set checksum" "$(printf '{"example":"XRAY_SHA256=<64-char-hex> xrf install ...","get_checksum":"curl -fsSL %s.dgst"}' "${url}")"
     exit 5
   fi
 
