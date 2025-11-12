@@ -9,9 +9,10 @@
 
 - ✅ **自动化部署**: 一键安装，开箱即用
 - ✅ **双拓扑支持**: Reality-only / Vision-Reality 双模式
+- ✅ **配置模板**: 预定义场景模板（个人/团队/生产），快速部署
 - ✅ **自动证书管理**: 集成 Caddy + Let's Encrypt
 - ✅ **插件系统**: 模块化扩展，按需启用
-- ✅ **全面测试**: 96个单元测试 + 集成测试，~80% 覆盖率
+- ✅ **全面测试**: 125个单元测试 + 集成测试，~85% 覆盖率
 - ✅ **安全加固**: RFC 合规验证，systemd 安全加固
 - ✅ **完善文档**: ShellDoc API 文档，故障排查指南
 
@@ -94,6 +95,77 @@ curl -sL install.sh | bash -s -- --topology reality-only --uuid 6ba85179-d64e-4c
 # 从字符串生成 UUID（便于记忆，每次相同）
 curl -sL install.sh | bash -s -- --topology reality-only --uuid-from-string "alice"
 ```
+
+## 配置模板
+
+使用预定义模板快速部署常见场景，无需手动配置参数。
+
+### 可用模板
+
+| 模板 ID | 名称 | 拓扑 | 适用场景 | 插件 |
+|--------|------|------|---------|------|
+| `home` | Home User | reality-only | 个人用户，单设备访问 | - |
+| `office` | Office/Team | vision-reality | 小型团队，5-20人 | cert-auto, firewall |
+| `server` | Production Server | vision-reality | 生产环境，50+用户 | cert-auto, firewall, monitoring |
+
+### 模板使用
+
+```bash
+# 查看可用模板
+bin/xrf templates list
+
+# 查看模板详情
+bin/xrf templates show home
+
+# 使用模板安装（模板值作为默认值）
+curl -sL install.sh | bash -s -- --template home
+
+# 使用模板 + 自定义参数（CLI 参数覆盖模板）
+curl -sL install.sh | bash -s -- --template office --domain vpn.company.com
+
+# 使用模板但覆盖拓扑
+curl -sL install.sh | bash -s -- --template server --topology reality-only
+```
+
+### 模板优先级
+
+配置参数的优先级从高到低：
+1. **CLI 显式参数**（最高优先级）
+2. **模板值**（默认值）
+3. **系统默认值**（最低优先级）
+
+示例：
+```bash
+# office 模板默认 vision-reality，但 CLI 指定 reality-only 会覆盖
+--template office --topology reality-only  # 最终使用 reality-only
+
+# office 模板包含 cert-auto,firewall 插件，CLI 指定 monitoring 会合并
+--template office --plugins monitoring     # 最终启用 cert-auto,firewall,monitoring
+```
+
+### 模板详情
+
+#### Home User 模板
+- **拓扑**: reality-only (无需域名)
+- **端口**: 443
+- **SNI**: www.microsoft.com
+- **插件**: 无
+- **适用**: 个人用户，单设备访问
+
+#### Office/Team 模板
+- **拓扑**: vision-reality (需要域名)
+- **端口**: Vision 8443, Reality 443
+- **SNI**: www.cloudflare.com
+- **插件**: cert-auto, firewall
+- **适用**: 小型团队，5-20人
+
+#### Production Server 模板
+- **拓扑**: vision-reality (需要域名)
+- **端口**: Vision 8443, Reality 443
+- **SNI**: www.apple.com,www.icloud.com
+- **插件**: cert-auto, firewall, monitoring
+- **安全**: 严格安全设置，TLS 1.3 only
+- **适用**: 生产环境，50+并发用户
 
 ## 插件系统
 
