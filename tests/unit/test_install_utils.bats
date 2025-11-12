@@ -31,6 +31,19 @@ teardown() {
   [[ "$output" == "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef" ]]
 }
 
+@test "xray::extract_sha256_from_dgst - SHA2-256 format (Xray v25.10.15+)" {
+  # Regression test: Xray v25.10.15+ uses SHA2-256= instead of SHA256=
+  # Real-world format from https://github.com/XTLS/Xray-core/releases
+  local dgst_content="MD5= 91f998f23bddb85d15cbf8d2f969fa7b
+SHA1= 90d8e336e4e3ca6161c82b89be23f88bf73eacd0
+SHA2-256= df22ad60c1251c9fb63d7f85b3677872edf61c6715eba64b06adbfec658f4938
+SHA2-512= 403fe28e933ce1916ea989b0e8fa7e5641648390daaa5d320ee79a94aac4bfabc9e9f9c790e4de9cca5fb76bc84630a0bb95896f62b301444c26a0d9cf509267"
+
+  run xray::extract_sha256_from_dgst "${dgst_content}"
+  [ "$status" -eq 0 ]
+  [[ "$output" == "df22ad60c1251c9fb63d7f85b3677872edf61c6715eba64b06adbfec658f4938" ]]
+}
+
 @test "xray::extract_sha256_from_dgst - plain format (hash  filename)" {
   local dgst_content="fedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321  Xray-linux-64.zip"
 
