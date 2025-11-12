@@ -438,6 +438,132 @@ health::check_certificates() {
 
 **Reference**: Fixed in commit b5cc468 (2025-11-12) - lib/health_check.sh missing lib/defaults.sh source
 
+### Network Operations and Error Recovery
+
+**Critical**: Network operations (downloads, API calls) must implement retry logic and provide actionable error messages.
+
+```bash
+# ❌ Wrong: Single attempt, generic error message
+if [[ -z "${sha}" ]]; then
+  local dgst_content
+  dgst_content="$(curl -fsSL "${url}.dgst" 2>/dev/null)" || true
+  if [[ -n "${dgst_content}" ]]; then
+    sha="$(xray::extract_sha256_from_dgst "${dgst_content}")"
+  fi
+fi
+
+if [[ -z "${sha}" ]]; then
+  core::log error "missing SHA256 checksum" "{}"
+  exit 5
+fi
+
+# ✅ Correct: Retry with exponential backoff + actionable error message
+if [[ -z "${sha}" ]]; then
+  local dgst_content
+  core::log debug "downloading checksum file with retry" "$(printf '{"url":"%s.dgst"}' "${url}")"
+  # Retry checksum download up to 3 times with exponential backoff
+  if dgst_content="$(core::retry 3 curl -fsSL "${url}.dgst" 2>&1)"; then
+    core::log debug "checksum file downloaded successfully" "{}"
+    sha="$(xray::extract_sha256_from_dgst "${dgst_content}")"
+  else
+    core::log warn "checksum download failed after retries" "$(printf '{"dgst_url":"%s.dgst"}' "${url}")"
+  fi
+fi
+
+if [[ -z "${sha}" ]]; then
+  core::log error "missing SHA256 checksum" "$(printf '{"dgst_url":"%s.dgst","hint":"Network issue or file unavailable"}' "${url}")"
+  core::log info "workaround: manually verify and set checksum" "$(printf '{"example":"XRAY_SHA256=<64-char-hex> xrf install ...","get_checksum":"curl -fsSL %s.dgst"}' "${url}")"
+  exit 5
+fi
+```
+
+**Why this matters**:
+- Network operations are inherently unreliable (timeouts, DNS issues, firewalls)
+- Transient failures can often be resolved with retries
+- Users need clear guidance when automation fails
+- Workarounds prevent complete installation failure
+
+**Error Message Best Practices**:
+1. **Explain what failed**: Include URL, file name, or specific operation
+2. **Suggest workarounds**: Provide environment variables or manual steps
+3. **Show examples**: Give copy-paste ready commands
+4. **Log level hierarchy**: Use `warn` for retryable failures, `error` for terminal failures
+
+**Reference**: Fixed in commit 171c272 (2025-11-12) - services/xray/install.sh checksum download retry logic
+
+### Real-World Trap Failure Case Study
+
+**Problem**: The `lib/backup.sh` functions `backup::create` and `backup::restore` used EXIT traps, causing "tmpdir: unbound variable" errors when called from error paths.
+
+```bash
+# ❌ Wrong: EXIT trap in backup::create (original code)
+backup::create() {
+  local tmpdir
+  tmpdir=$(mktemp -d -t xray-backup.XXXXXX)
+  trap 'rm -rf "${tmpdir}" 2>/dev/null || true' EXIT INT TERM
+
+  # ... backup operations ...
+
+  if ! tar -czf "${backup_file}" -C "${tmpdir}" . 2>/dev/null; then
+    core::log error "failed to create backup archive" "$(printf '{"file":"%s"}' "${backup_file}")"
+    return 1  # Bug: EXIT trap tries to access ${tmpdir}, but variable scope issues
+  fi
+  # ... rest of function ...
+}
+
+# When called from commands/install.sh error path:
+# 1. install.sh calls backup::create (creates trap)
+# 2. tar fails, function returns 1
+# 3. install.sh ERR trap fires
+# 4. backup::create EXIT trap also fires
+# 5. Error: "tmpdir: unbound variable" because trap context is different
+```
+
+**Fix**: Remove traps, add explicit cleanup on all error paths
+
+```bash
+# ✅ Correct: Explicit cleanup without traps
+backup::create() {
+  # Use hidden prefix to avoid conflicts if cleanup fails (CWE-362)
+  local tmpdir
+  tmpdir=$(mktemp -d -t .xray-backup.XXXXXX)
+
+  # ... copy operations with error handling ...
+
+  if ! cp -a "${xray_etc}" "${tmpdir}/xray" 2>/dev/null; then
+    core::log error "failed to copy xray configuration" "{}"
+    rm -rf "${tmpdir}" 2>/dev/null || true  # Explicit cleanup
+    return 1
+  fi
+
+  # Create tar.gz archive
+  if ! tar -czf "${backup_file}" -C "${tmpdir}" . 2>/dev/null; then
+    core::log error "failed to create backup archive" "$(printf '{"file":"%s"}' "${backup_file}")"
+    rm -rf "${tmpdir}" 2>/dev/null || true  # Explicit cleanup
+    return 1
+  fi
+
+  # Cleanup temporary directory (archive created successfully)
+  rm -rf "${tmpdir}" 2>/dev/null || true
+
+  # ... rest of function ...
+}
+```
+
+**Key Insights**:
+- **Trap scope confusion**: EXIT traps fire when *process* exits, not when *function* returns
+- **Complex call chains**: When utility functions are called from error handlers, traps can nest unpredictably
+- **Variable visibility**: Local variables may not be accessible in trap context depending on execution flow
+- **Hidden prefix pattern**: Use `.` prefix for temp files (`.xray-backup.XXXXXX`) to minimize conflicts if cleanup fails
+
+**When to use traps**:
+- ✅ Main scripts (commands/*.sh) with clear lifecycle
+- ✅ Standalone scripts that run in their own process
+- ❌ Utility functions in lib/ or modules/
+- ❌ Functions called from complex contexts (error handlers, pipelines)
+
+**Reference**: Fixed in commit 171c272 (2025-11-12) - lib/backup.sh EXIT trap removal
+
 ### Variable Pollution Defense
 ```bash
 # ❌ Wrong: Directly sourcing external files may pollute variables
