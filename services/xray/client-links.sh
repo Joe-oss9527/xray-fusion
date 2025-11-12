@@ -15,23 +15,36 @@ main() {
   state="$(state::load)"
 
   # Performance optimization: Extract all fields in single jq call (11→1 fork)
-  # Uses tab-separated output to avoid complex JSON parsing
-  local topo sni sid pbk vport rport uv ur dom uuid port
-  read -r topo sni sid pbk vport rport uv ur dom uuid port < <(
-    echo "${state}" | jq -r '[
-      .name // .topology // "reality-only",
-      .xray.reality_sni // "www.microsoft.com",
-      .xray.short_id // "",
-      .xray.reality_public_key // "",
-      .xray.vision_port // "8443",
-      .xray.reality_port // "443",
-      .xray.uuid_vision // "",
-      .xray.uuid_reality // "",
-      .xray.domain // "",
-      .xray.uuid // "",
-      .xray.port // "443"
-    ] | @tsv'
+  # jq emits newline-delimited values; mapfile preserves empty fields
+  local -a fields=()
+  mapfile -t fields < <(
+    echo "${state}" | jq -r '
+      [
+        .name // .topology // "reality-only",
+        .xray.reality_sni // "www.microsoft.com",
+        .xray.short_id // "",
+        .xray.reality_public_key // "",
+        .xray.vision_port // "8443",
+        .xray.reality_port // "443",
+        .xray.uuid_vision // "",
+        .xray.uuid_reality // "",
+        .xray.domain // "",
+        .xray.uuid // "",
+        .xray.port // "443"
+      ] | .[] // ""
+    '
   )
+  local topo="${fields[0]:-}"
+  local sni="${fields[1]:-}"
+  local sid="${fields[2]:-}"
+  local pbk="${fields[3]:-}"
+  local vport="${fields[4]:-}"
+  local rport="${fields[5]:-}"
+  local uv="${fields[6]:-}"
+  local ur="${fields[7]:-}"
+  local dom="${fields[8]:-}"
+  local uuid="${fields[9]:-}"
+  local port="${fields[10]:-}"
   # Ensure shortId is correct: if empty, try to read from config file
   if [[ -z "${sid}" && -f "$(xray::active)/05_inbounds.json" ]]; then
     sid="$(jq -r '.inbounds[]?.streamSettings?.realitySettings?.shortIds?[1] // .inbounds[]?.streamSettings?.realitySettings?.shortIds?[0] // empty' "$(xray::active)/05_inbounds.json" 2> /dev/null | head -1)"
