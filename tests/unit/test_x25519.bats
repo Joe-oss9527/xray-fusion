@@ -1,0 +1,108 @@
+#!/usr/bin/env bats
+# Tests for lib/x25519.sh helpers
+
+load ../test_helper
+
+setup() {
+  setup_test_env
+  # shellcheck source=lib/x25519.sh
+  . "${PROJECT_ROOT}/lib/x25519.sh"
+}
+
+teardown() {
+  cleanup_test_env
+}
+
+@test "x25519::parse_keys extracts private and public values" {
+  local output
+  output=$(x25519::parse_keys $'Private key: AAAA=\nPublic key: BBBB=')
+  read -r private public <<< "${output}"
+  [ "${private}" = "AAAA=" ]
+  [ "${public}" = "BBBB=" ]
+}
+
+@test "x25519::parse_keys tolerates uppercase labels and whitespace" {
+  local output
+  output=$(x25519::parse_keys $'  PUBLIC KEY :  CCCC=\r\n  private KEY:\tDDDD=')
+  read -r private public <<< "${output}"
+  [ "${private}" = "DDDD=" ]
+  [ "${public}" = "CCCC=" ]
+}
+
+@test "x25519::derive_public_key uses --key flag when available" {
+  local fake_xray="${BATS_TEST_TMPDIR}/xray-bin"
+  cat <<'SCRIPT' > "${fake_xray}"
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1}" == "x25519" ]]; then
+  shift
+  case "${1:-}" in
+    --key)
+      shift
+      printf 'Public key: derived-%s\n' "${1:-}"
+      exit 0
+      ;;
+    --key=*)
+      printf 'Public key: derived-%s\n' "${1#*=}"
+      exit 0
+      ;;
+    *)
+      exit 1
+      ;;
+  esac
+fi
+exit 1
+SCRIPT
+  chmod +x "${fake_xray}"
+
+  local result
+  result="$(x25519::derive_public_key "${fake_xray}" "aaaa=")"
+  [ "${result}" = "derived-aaaa=" ]
+}
+
+@test "x25519::derive_public_key falls back to -k flag" {
+  local fake_xray="${BATS_TEST_TMPDIR}/xray-bin-fallback"
+  cat <<'SCRIPT' > "${fake_xray}"
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1}" == "x25519" ]]; then
+  shift
+  case "${1:-}" in
+    --key|-key)
+      exit 1
+      ;;
+    -k)
+      shift
+      printf 'Public key: fallback-%s\n' "${1:-}"
+      exit 0
+      ;;
+    -k=*)
+      printf 'Public key: fallback-%s\n' "${1#*=}"
+      exit 0
+      ;;
+    *)
+      exit 1
+      ;;
+  esac
+fi
+exit 1
+SCRIPT
+  chmod +x "${fake_xray}"
+
+  local result
+  result="$(x25519::derive_public_key "${fake_xray}" "bbbb=")"
+  [ "${result}" = "fallback-bbbb=" ]
+}
+
+@test "x25519::derive_public_key returns failure when no output" {
+  local fake_xray="${BATS_TEST_TMPDIR}/xray-empty"
+  cat <<'SCRIPT' > "${fake_xray}"
+#!/usr/bin/env bash
+set -euo pipefail
+exit 1
+SCRIPT
+  chmod +x "${fake_xray}"
+
+  run x25519::derive_public_key "${fake_xray}" "cccc="
+  [ "$status" -ne 0 ]
+}

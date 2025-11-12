@@ -107,10 +107,24 @@ core::log_format() {
     display_lvl="${lvl^^}"
   fi
 
+  local ctx_trimmed="${ctx}"
+  ctx_trimmed="${ctx_trimmed#${ctx_trimmed%%[![:space:]]*}}"
+  ctx_trimmed="${ctx_trimmed%${ctx_trimmed##*[![:space:]]}}"
+  local ctx_is_empty="false"
+  if [[ -z "${ctx_trimmed}" || "${ctx_trimmed}" == "{}" ]]; then
+    ctx_is_empty="true"
+  fi
+
   if [[ "${XRF_JSON}" == "true" ]]; then
-    printf '{"ts":"%s","level":"%s","msg":"%s","ctx":%s}\n' "$(core::ts)" "${lvl}" "${msg}" "${ctx}"
+    local json_ctx="${ctx}"
+    [[ "${ctx_is_empty}" == "true" ]] && json_ctx="{}"
+    printf '{"ts":"%s","level":"%s","msg":"%s","ctx":%s}\n' "$(core::ts)" "${lvl}" "${msg}" "${json_ctx}"
   else
-    printf '[%s] %-8s %s %s\n' "$(core::ts)" "${display_lvl}" "${msg}" "${ctx}"
+    if [[ "${ctx_is_empty}" == "true" ]]; then
+      printf '[%s] %-8s %s\n' "$(core::ts)" "${display_lvl}" "${msg}"
+    else
+      printf '[%s] %-8s %s %s\n' "$(core::ts)" "${display_lvl}" "${msg}" "${ctx}"
+    fi
   fi
 }
 
@@ -153,7 +167,8 @@ core::log() {
   shift
   local msg="${1}"
   shift || true
-  local ctx="${1-{} }"
+  local ctx="${1-}"
+  [[ -z "${ctx}" ]] && ctx="{}"
 
   # Early return: filter debug messages unless XRF_DEBUG is true
   [[ "${lvl}" == "debug" && "${XRF_DEBUG}" != "true" ]] && return 0

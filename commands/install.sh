@@ -11,6 +11,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 . "${HERE}/lib/health_check.sh"
 . "${HERE}/lib/plugins.sh"
 . "${HERE}/lib/backup.sh"
+. "${HERE}/lib/x25519.sh"
 . "${HERE}/modules/state.sh"
 . "${HERE}/services/xray/common.sh"
 
@@ -237,11 +238,25 @@ main() {
 
   # Generate private/public key pair if not provided
   if [[ -z "${XRAY_PRIVATE_KEY:-}" && -x "$(xray::bin)" ]]; then
-    local keypair
+    local keypair private_key public_key
     keypair="$("$(xray::bin)" x25519 2> /dev/null || true)"
-    XRAY_PRIVATE_KEY="$(echo "${keypair}" | awk '/PrivateKey:/ {print $2}')"
-    XRAY_PUBLIC_KEY="$(echo "${keypair}" | awk '/Password:/ {print $2}')"
-    unset keypair
+    read -r private_key public_key < <(x25519::parse_keys "${keypair}")
+    if [[ -z "${private_key}" || -z "${public_key}" ]]; then
+      core::log error "failed to parse x25519 keypair" '{"suggestion":"verify xray x25519 output"}'
+      exit 1
+    fi
+    XRAY_PRIVATE_KEY="${private_key}"
+    XRAY_PUBLIC_KEY="${public_key}"
+    unset keypair private_key public_key
+  elif [[ -n "${XRAY_PRIVATE_KEY:-}" && -z "${XRAY_PUBLIC_KEY:-}" && -x "$(xray::bin)" ]]; then
+    local derived_public
+    if derived_public="$(x25519::derive_public_key "$(xray::bin)" "${XRAY_PRIVATE_KEY}")"; then
+      XRAY_PUBLIC_KEY="${derived_public}"
+      unset derived_public
+    else
+      core::log error "failed to derive public key from provided private key" '{"suggestion":"re-run: xray x25519"}'
+      exit 1
+    fi
   fi
 
   export XRAY_SNIFFING="${XRAY_SNIFFING:-false}"
@@ -285,4 +300,7 @@ main() {
     core::log warn "health check failed" '{"suggestion":"run xrf health to diagnose issues"}'
   fi
 }
-main "${@}"
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "${@}"
+fi
