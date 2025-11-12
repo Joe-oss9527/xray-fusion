@@ -38,8 +38,8 @@ xray::extract_sha256_from_dgst() {
   [[ -z "${dgst_content}" ]] && return 0
 
   # Priority 1: Try labeled SHA256 format first (most reliable)
-  # Matches: "SHA256 (file) = hash" or "SHA256(file)=hash"
-  sha="$(echo "${dgst_content}" | grep -i 'SHA256' | grep -oE '[0-9A-Fa-f]{64}' | head -1)" || true
+  # Matches: "SHA256 (file) = hash", "SHA256(file)=hash", or "SHA2-256= hash"
+  sha="$(echo "${dgst_content}" | grep -iE 'SHA2?-?256' | grep -oE '[0-9A-Fa-f]{64}' | head -1)" || true
 
   # Priority 2: Fallback to plain hash at line start
   # Matches: "hash  filename" (two spaces separator)
