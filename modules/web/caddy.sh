@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Caddy 自动 TLS 管理模块
-# 参考 233boy/Xray 实现
+# Caddy automatic TLS management module
+# Reference implementation: 233boy/Xray
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=lib/core.sh
@@ -124,7 +124,7 @@ caddy::setup_auto_tls() {
 
   core::log debug "configuring caddy" "$(printf '{"http_port":"%s","https_port":"%s","fallback_port":"%s"}' "${caddy_http_port}" "${caddy_https_port}" "${caddy_fallback_port}")"
 
-  # 创建 Caddyfile 配置 - Caddy 作为 fallback 服务，不占用 443
+  # Create Caddyfile configuration - Caddy as fallback service, does not occupy 443
   cat > "$(caddy::config_file)" << EOF
 {
   admin off
@@ -141,10 +141,10 @@ ${domain}:${caddy_https_port} {
 }
 EOF
 
-  # 创建 systemd 服务
+  # Create systemd service
   caddy::create_systemd_service
 
-  # 启动 Caddy
+  # Start Caddy
   systemctl start caddy || {
     core::log error "failed to start caddy" "{}"
     return 1
@@ -160,14 +160,14 @@ caddy::wait_for_cert() {
 
   core::log info "waiting for certificate" "$(printf '{"domain":"%s"}' "${domain}")"
 
-  # 等待 Caddy 启动并获取证书
+  # Wait for Caddy to start and obtain certificate
   while [[ $waited -lt $max_wait ]]; do
-    # 检查 Caddy 是否正在运行
+    # Check if Caddy is running
     if systemctl is-active --quiet caddy; then
       core::log debug "caddy service is active" "$(printf '{"waited":"%ds"}' "${waited}")"
 
-      # 先检查 Caddy 是否已获取证书（检查 Caddy 自己的证书目录）
-      # 使用 nullglob 避免不必要的 ls 调用
+      # First check if Caddy has obtained certificate (check Caddy's own cert directory)
+      # Use nullglob to avoid unnecessary ls calls
       shopt -s nullglob
       local caddy_certs=(/root/.local/share/caddy/certificates/*/"${domain}.crt")
       shopt -u nullglob
@@ -175,7 +175,7 @@ caddy::wait_for_cert() {
       if [[ ${#caddy_certs[@]} -gt 0 ]]; then
         core::log debug "caddy certificate found in cert directory" "$(printf '{"domain":"%s"}' "${domain}")"
 
-        # 尝试同步证书
+        # Try to sync certificate
         if /usr/local/bin/caddy-cert-sync "${domain}" > /dev/null 2>&1; then
           core::log debug "certificate sync succeeded" "{}"
         else
@@ -185,7 +185,7 @@ caddy::wait_for_cert() {
         core::log debug "caddy certificate not ready yet" "$(printf '{"waited":"%ds"}' "${waited}")"
       fi
 
-      # 检查证书是否已同步到 Xray 目录
+      # Check if certificate has been synced to Xray directory
       if [[ -f "${cert_dir}/fullchain.pem" && -f "${cert_dir}/privkey.pem" ]]; then
         core::log info "certificate ready" "$(printf '{"domain":"%s","waited":"%ds"}' "${domain}" "${waited}")"
         return 0
@@ -207,7 +207,7 @@ caddy::setup_cert_sync() {
   local here
   here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-  # 安装证书同步脚本（从 scripts/ 目录）
+  # Install certificate sync script (from scripts/ directory)
   local script_src="${here}/scripts/caddy-cert-sync.sh"
   local script_dst="/usr/local/bin/caddy-cert-sync"
 
@@ -219,7 +219,7 @@ caddy::setup_cert_sync() {
   io::install_file "${script_src}" "${script_dst}" 0755
   core::log info "cert sync script installed" "$(printf '{"path":"%s"}' "${script_dst}")"
 
-  # 创建 systemd service 用于证书同步
+  # Create systemd service for certificate synchronization
   cat > /etc/systemd/system/cert-reload.service << EOF
 [Unit]
 Description=Sync Caddy certificates to Xray for ${domain}
@@ -230,33 +230,33 @@ PartOf=caddy.service
 Type=oneshot
 ExecStart=/usr/local/bin/caddy-cert-sync ${domain}
 
-# 环境变量（与项目日志系统兼容）
+# Environment variables (compatible with project logging system)
 Environment="XRF_DEBUG=\${XRF_DEBUG:-false}"
 Environment="XRF_JSON=\${XRF_JSON:-false}"
 
-# 安全加固
+# Security hardening
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=/usr/local/etc/xray/certs
 NoNewPrivileges=true
 
-# 资源限制
+# Resource limits
 MemoryMax=50M
 TasksMax=10
 EOF
 
-  # 创建 systemd timer 定期检查证书（比 path 单元更可靠）
-  # 参考: systemd Path 单元在某些文件系统和嵌套目录场景下不可靠
+  # Create systemd timer for periodic certificate checks (more reliable than path units)
+  # Reference: systemd Path units are unreliable on some filesystems and nested directory scenarios
   cat > /etc/systemd/system/cert-reload.timer << EOF
 [Unit]
 Description=Periodic certificate sync check for ${domain}
 PartOf=caddy.service
 
 [Timer]
-# 启动后 2 分钟首次运行
+# First run 2 minutes after boot
 OnBootSec=2min
-# 每 10 分钟检查一次（证书变更频率低，10分钟足够）
+# Check every 10 minutes (certificate changes are infrequent, 10 minutes is sufficient)
 OnUnitActiveSec=10min
 Persistent=true
 
