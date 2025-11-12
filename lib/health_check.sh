@@ -7,6 +7,8 @@ readonly _XRF_HEALTH_CHECK_LOADED=1
 
 # Load required modules
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib/defaults.sh
+. "${HERE}/lib/defaults.sh"
 # shellcheck source=modules/state.sh
 . "${HERE}/modules/state.sh"
 # shellcheck source=services/xray/common.sh
