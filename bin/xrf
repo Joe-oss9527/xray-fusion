@@ -11,6 +11,7 @@ Usage: xrf <command>
   status      Show version & active confdir
   uninstall   Remove Xray (keep state)
   links       Print client links
+  test-sni    Test SNI domain for REALITY protocol compatibility
   plugin      Manage plugins (list/enable/disable/info)
   help        Show this help
 EOF
@@ -31,6 +32,10 @@ case "${1-}" in
   links)
     shift || true
     "${HERE}/services/xray/client-links.sh" "$@"
+    ;;
+  test-sni)
+    shift || true
+    "${HERE}/commands/test-sni.sh" "$@"
     ;;
   plugin)
     shift || true

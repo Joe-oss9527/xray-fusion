@@ -6,6 +6,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 . "${HERE}/lib/args.sh"
 . "${HERE}/lib/uuid.sh"
 . "${HERE}/lib/preview.sh"
+. "${HERE}/lib/sni_validator.sh"
 . "${HERE}/lib/plugins.sh"
 . "${HERE}/modules/state.sh"
 . "${HERE}/services/xray/common.sh"
@@ -124,6 +125,19 @@ main() {
   if [[ "${XRAY_REALITY_DEST}" != *:* ]]; then
     XRAY_REALITY_DEST="${XRAY_REALITY_DEST}:443"
   fi
+
+  # Validate SNI domain (optional check, warn if fails)
+  # Extract domain from REALITY_DEST (remove port)
+  local sni_domain="${XRAY_REALITY_DEST%:*}"
+  core::log info "validating SNI domain" "$(printf '{"domain":"%s"}' "${sni_domain}")"
+
+  # Run SNI validation silently (log results only)
+  if ! sni::validate "${sni_domain}" >/dev/null 2>&1; then
+    core::log warn "SNI validation failed" "$(printf '{"domain":"%s","suggestion":"REALITY may work but with reduced reliability"}' "${sni_domain}")"
+  else
+    core::log info "SNI validation passed" "$(printf '{"domain":"%s"}' "${sni_domain}")"
+  fi
+
   # Generate shortIds pool (3-5 shortIds for multi-client scenarios)
   # Uses xray::generate_shortids() for batch generation (performance optimization)
   # Tries: xxd (simple) → od (POSIX) → openssl (fallback)
