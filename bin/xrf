@@ -12,6 +12,7 @@ Usage: xrf <command>
   uninstall   Remove Xray (keep state)
   links       Print client links
   test-sni    Test SNI domain for REALITY protocol compatibility
+  health      Run post-installation health check
   plugin      Manage plugins (list/enable/disable/info)
   help        Show this help
 EOF
@@ -36,6 +37,10 @@ case "${1-}" in
   test-sni)
     shift || true
     "${HERE}/commands/test-sni.sh" "$@"
+    ;;
+  health)
+    shift || true
+    "${HERE}/commands/health.sh" "$@"
     ;;
   plugin)
     shift || true

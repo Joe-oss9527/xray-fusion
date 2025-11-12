@@ -7,6 +7,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 . "${HERE}/lib/uuid.sh"
 . "${HERE}/lib/preview.sh"
 . "${HERE}/lib/sni_validator.sh"
+. "${HERE}/lib/health_check.sh"
 . "${HERE}/lib/plugins.sh"
 . "${HERE}/modules/state.sh"
 . "${HERE}/services/xray/common.sh"
@@ -207,5 +208,14 @@ main() {
 
   "${HERE}/services/xray/client-links.sh" "${TOPOLOGY}"
   core::log info "Install complete" "$(printf '{"topology":"%s","version":"%s"}' "${TOPOLOGY}" "${version}")"
+
+  # Run post-installation health check
+  core::log info "running post-installation health check" "{}"
+  printf '\n'
+  if health::run; then
+    core::log info "health check passed" "{}"
+  else
+    core::log warn "health check failed" '{"suggestion":"run xrf health to diagnose issues"}'
+  fi
 }
 main "${@}"
