@@ -32,7 +32,7 @@ main() {
       .xray.port // "443"
     ] | @tsv'
   )
-  # 确保shortId正确：如果为空，尝试从配置文件读取
+  # Ensure shortId is correct: if empty, try to read from config file
   if [[ -z "${sid}" && -f "$(xray::active)/05_inbounds.json" ]]; then
     sid="$(jq -r '.inbounds[]?.streamSettings?.realitySettings?.shortIds?[1] // .inbounds[]?.streamSettings?.realitySettings?.shortIds?[0] // empty' "$(xray::active)/05_inbounds.json" 2> /dev/null | head -1)"
   fi

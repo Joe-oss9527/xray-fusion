@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 原子同步 Caddy 证书到 Xray 目录
+# Atomically synchronize Caddy certificates to Xray directory
 set -euo pipefail
 
 # Detect script location (for sourcing defaults if running from repo)
@@ -212,8 +212,8 @@ if [[ -z "${DOMAIN}" ]]; then
   exit 1
 fi
 
-# 动态查找域名证书（限制深度为 3 层，覆盖所有 ACME providers）
-# Caddy 目录结构: certificates/<provider>/<domain>/<domain>.crt (最大深度 3 层)
+# Dynamically locate domain certificates (max depth 3, covers all ACME providers)
+# Caddy directory structure: certificates/<provider>/<domain>/<domain>.crt (max 3 levels)
 cert_file=$(find "${CADDY_CERT_BASE}" -maxdepth 3 -type f -name "${DOMAIN}.crt" \
   -printf '%T@ %p\n' 2> /dev/null | sort -rn | head -1 | cut -d' ' -f2-)
 key_file=$(find "${CADDY_CERT_BASE}" -maxdepth 3 -type f -name "${DOMAIN}.key" \
@@ -237,23 +237,23 @@ fi
 log info "found certificate: ${cert_file}"
 log info "found private key: ${key_file}"
 
-# 证书验证：检查是否已过期
+# Certificate validation: Check if already expired
 if ! openssl x509 -in "${cert_file}" -noout -checkend 0 > /dev/null 2>&1; then
   log error "certificate has already expired - aborting sync"
   exit 1
 fi
 
-# 证书验证：检查有效期（7天警告窗口）
+# Certificate validation: Check validity period (7-day warning window)
 if ! openssl x509 -in "${cert_file}" -noout -checkend 604800 > /dev/null 2>&1; then
   log warn "certificate expires within 7 days - renewal may have failed"
 fi
 
-# 证书和私钥匹配性验证（支持 RSA 和 ECDSA）
+# Certificate and private key matching validation (supports RSA and ECDSA)
 validate_cert_key_match() {
   local cert="${1}"
   local key="${2}"
 
-  # 通用方法：比较公钥（适用于 RSA 和 ECDSA）
+  # Universal method: Compare public keys (works for both RSA and ECDSA)
   local cert_pub key_pub
   cert_pub=$(openssl x509 -in "${cert}" -pubkey -noout 2> /dev/null | sha256sum | awk '{print $1}')
   key_pub=$(openssl pkey -in "${key}" -pubout 2> /dev/null | sha256sum | awk '{print $1}')
@@ -278,14 +278,14 @@ if ! validate_cert_key_match "${cert_file}" "${key_file}"; then
   exit 1
 fi
 
-# 原子复制：使用同分区临时目录 + mv（POSIX 原子操作）
+# Atomic copy: Use same-partition temp directory + mv (POSIX atomic operation)
 ensure_dir "${XRAY_CERT_DIR}" 0755 || {
   log error "failed to create certificate directory: ${XRAY_CERT_DIR}"
   exit 1
 }
 tmpdir=$(mktemp -d -p "${XRAY_CERT_DIR}" .cert-sync.XXXXXX)
 
-# 备份现有证书（用于失败回滚）
+# Backup existing certificates (for rollback on failure)
 backup_dir="${XRAY_CERT_DIR}/.backup.$$"
 ensure_dir "${backup_dir}" 0755 || {
   log error "failed to create backup directory: ${backup_dir}"
@@ -299,11 +299,11 @@ if [[ -f "${XRAY_CERT_DIR}/privkey.pem" ]]; then
   cp -a "${XRAY_CERT_DIR}/privkey.pem" "${backup_dir}/privkey.pem"
 fi
 
-# 复制到临时目录
+# Copy to temporary directory
 cp "${cert_file}" "${tmpdir}/fullchain.pem"
 cp "${key_file}" "${tmpdir}/privkey.pem"
 
-# 设置权限（在临时目录中）
+# Set permissions (in temporary directory)
 chmod 644 "${tmpdir}/fullchain.pem" || {
   log error "failed to set permissions on fullchain.pem"
   rm -rf "${tmpdir}" "${backup_dir}"
@@ -316,7 +316,7 @@ chmod 640 "${tmpdir}/privkey.pem" || {
   exit 1
 }
 
-# 设置所有权（验证 xray 组存在）
+# Set ownership (verify xray group exists)
 if getent group xray > /dev/null 2>&1; then
   chown root:xray "${tmpdir}"/*.pem || {
     log error "failed to set ownership (root:xray)"
@@ -328,7 +328,7 @@ else
   chown root:root "${tmpdir}"/*.pem
 fi
 
-# 原子移动（带回滚能力）
+# Atomic move (with rollback capability)
 if ! mv -f "${tmpdir}/fullchain.pem" "${XRAY_CERT_DIR}/fullchain.pem"; then
   log error "failed to move fullchain.pem"
   rm -rf "${tmpdir}" "${backup_dir}"
@@ -337,7 +337,7 @@ fi
 
 if ! mv -f "${tmpdir}/privkey.pem" "${XRAY_CERT_DIR}/privkey.pem"; then
   log error "failed to move privkey.pem - rolling back fullchain"
-  # 回滚：恢复旧的 fullchain
+  # Rollback: Restore old fullchain
   if [[ -f "${backup_dir}/fullchain.pem" ]]; then
     mv -f "${backup_dir}/fullchain.pem" "${XRAY_CERT_DIR}/fullchain.pem"
   fi
@@ -345,15 +345,15 @@ if ! mv -f "${tmpdir}/privkey.pem" "${XRAY_CERT_DIR}/privkey.pem"; then
   exit 1
 fi
 
-# 成功 - 清理备份和临时目录
+# Success - Clean up backup and temporary directories
 rm -rf "${backup_dir}"
 rmdir "${tmpdir}"
 trap - EXIT
 
 log info "certificates atomically updated for ${DOMAIN}"
 
-# 重启 Xray 服务（Xray 不支持 SIGHUP 优雅重载）
-# 参考: https://github.com/XTLS/Xray-core/discussions/1060
+# Restart Xray service (Xray does not support SIGHUP graceful reload)
+# Reference: https://github.com/XTLS/Xray-core/discussions/1060
 if systemctl is-active --quiet xray 2> /dev/null; then
   log info "restarting xray service to apply new certificates"
   if systemctl restart xray > /dev/null 2>&1; then
