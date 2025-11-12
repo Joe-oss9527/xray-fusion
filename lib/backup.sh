@@ -16,8 +16,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=services/xray/common.sh
 . "${HERE}/services/xray/common.sh"
 
-# Backup storage location
-readonly BACKUP_DIR="/var/lib/xray-fusion/backups"
+# Backup retention policy
 readonly BACKUP_RETENTION=10 # Keep last 10 backups
 
 ##
@@ -324,7 +323,8 @@ backup::restore() {
 
   # Create automatic backup before restore
   core::log info "creating pre-restore backup" "{}"
-  local pre_restore_name="pre-restore-$(date +%Y%m%d-%H%M%S)"
+  local pre_restore_name
+  pre_restore_name="pre-restore-$(date +%Y%m%d-%H%M%S)"
   if ! backup::create "${pre_restore_name}"; then
     core::log warn "failed to create pre-restore backup" '{}'
     # Continue anyway - user explicitly requested restore

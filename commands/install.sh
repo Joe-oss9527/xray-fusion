@@ -140,7 +140,8 @@ main() {
   state_file="$(state::path)"
   if [[ -f "${state_file}" ]]; then
     core::log info "existing installation detected, creating automatic backup" "{}"
-    local auto_backup_name="pre-install-$(date +%Y%m%d-%H%M%S)"
+    local auto_backup_name
+    auto_backup_name="pre-install-$(date +%Y%m%d-%H%M%S)"
     if backup::create "${auto_backup_name}" > /dev/null 2>&1; then
       core::log info "automatic backup created" "$(printf '{"name":"%s"}' "${auto_backup_name}")"
     else
