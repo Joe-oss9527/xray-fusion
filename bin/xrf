@@ -12,6 +12,7 @@ Usage: xrf <command>
   uninstall   Remove Xray (keep state)
   links       Print client links
   logs        View, filter, and export Xray logs
+  backup      Manage configuration backups
   test-sni    Test SNI domain for REALITY protocol compatibility
   health      Run post-installation health check
   templates   Manage configuration templates
@@ -39,6 +40,10 @@ case "${1-}" in
   logs)
     shift || true
     "${HERE}/commands/logs.sh" "$@"
+    ;;
+  backup)
+    shift || true
+    "${HERE}/commands/backup.sh" "$@"
     ;;
   test-sni)
     shift || true
