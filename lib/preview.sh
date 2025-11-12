@@ -68,7 +68,8 @@ preview::show() {
   if [[ "${XRF_JSON}" == "true" ]]; then
     # JSON format
     local json_output
-    json_output=$(cat <<EOF
+    json_output=$(
+      cat << EOF
 {
   "preview": {
     "topology": "${topology}",
@@ -83,7 +84,7 @@ EOF
     printf '%s\n' "${json_output}"
   else
     # Text format
-    cat <<EOF
+    cat << EOF
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                    Installation Preview
@@ -98,7 +99,7 @@ EOF
       printf "  Domain:      %s\n" "${domain}"
     fi
 
-    cat <<EOF
+    cat << EOF
   Ports:       ${ports}
   Plugins:     ${plugins}
 

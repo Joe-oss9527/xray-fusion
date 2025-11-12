@@ -68,7 +68,7 @@ logs::view() {
   core::log debug "viewing logs" "$(printf '{"level":"%s","since":"%s","lines":%d}' "${level}" "${since}" "${lines}")"
 
   # Execute journalctl and filter/format output
-  if ! "${cmd[@]}" 2>/dev/null; then
+  if ! "${cmd[@]}" 2> /dev/null; then
     core::log error "failed to retrieve logs" '{"suggestion":"ensure xray service is running"}'
     return 1
   fi | logs::_format "${level}" "${no_color}"
@@ -109,7 +109,7 @@ logs::follow() {
   local cmd=(journalctl -u xray.service -f --output=short-iso --no-pager)
 
   # Execute and format
-  if ! "${cmd[@]}" 2>/dev/null; then
+  if ! "${cmd[@]}" 2> /dev/null; then
     core::log error "failed to follow logs" '{"suggestion":"ensure xray service is running"}'
     return 1
   fi | logs::_format "${level}" "${no_color}"
@@ -156,13 +156,13 @@ logs::export() {
   cmd+=(--output=short-iso --no-pager)
 
   # Export to file (no formatting, no color)
-  if ! "${cmd[@]}" 2>/dev/null | logs::_format "${level}" "true" > "${output_file}"; then
+  if ! "${cmd[@]}" 2> /dev/null | logs::_format "${level}" "true" > "${output_file}"; then
     core::log error "failed to export logs" "$(printf '{"file":"%s"}' "${output_file}")"
     return 1
   fi
 
   local exported_lines
-  exported_lines=$(wc -l < "${output_file}" 2>/dev/null || echo "unknown")
+  exported_lines=$(wc -l < "${output_file}" 2> /dev/null || echo "unknown")
   core::log info "logs exported successfully" "$(printf '{"file":"%s","lines":"%s"}' "${output_file}" "${exported_lines}")"
   return 0
 }
@@ -200,7 +200,7 @@ logs::stats() {
 
   # Get logs
   local logs
-  if ! logs=$(journalctl -u xray.service --since "${since}" --output=cat --no-pager 2>/dev/null); then
+  if ! logs=$(journalctl -u xray.service --since "${since}" --output=cat --no-pager 2> /dev/null); then
     core::log error "failed to retrieve logs for statistics" "{}"
     return 1
   fi
@@ -247,7 +247,7 @@ logs::_format() {
         error)
           [[ "${line}" =~ [Ee]rror ]] || continue
           ;;
-        warn|warning)
+        warn | warning)
           [[ "${line}" =~ [Ww]arn ]] || continue
           ;;
         info)

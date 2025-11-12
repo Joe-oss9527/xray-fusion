@@ -43,14 +43,14 @@ templates::list() {
   if [[ -d "${BUILTIN_TEMPLATES_DIR}" ]]; then
     while IFS= read -r file; do
       template_files+=("${file}")
-    done < <(find "${BUILTIN_TEMPLATES_DIR}" -name "*.json" -type f 2>/dev/null)
+    done < <(find "${BUILTIN_TEMPLATES_DIR}" -name "*.json" -type f 2> /dev/null)
   fi
 
   # User templates
   if [[ -d "${USER_TEMPLATES_DIR}" ]]; then
     while IFS= read -r file; do
       template_files+=("${file}")
-    done < <(find "${USER_TEMPLATES_DIR}" -name "*.json" -type f 2>/dev/null)
+    done < <(find "${USER_TEMPLATES_DIR}" -name "*.json" -type f 2> /dev/null)
   fi
 
   # shellcheck disable=SC2154  # XRF_JSON is set by core::init
@@ -61,7 +61,7 @@ templates::list() {
     for file in "${template_files[@]}"; do
       if [[ -f "${file}" ]]; then
         local metadata
-        metadata=$(jq -c '.metadata' "${file}" 2>/dev/null)
+        metadata=$(jq -c '.metadata' "${file}" 2> /dev/null)
         if [[ -n "${metadata}" && "${metadata}" != "null" ]]; then
           [[ "${first}" -eq 0 ]] && printf ',\n'
           printf '    %s' "${metadata}"
@@ -82,10 +82,10 @@ templates::list() {
     for file in "${template_files[@]}"; do
       if [[ -f "${file}" ]]; then
         local id name description category
-        id=$(jq -r '.metadata.id // "unknown"' "${file}" 2>/dev/null)
-        name=$(jq -r '.metadata.name // "Unknown"' "${file}" 2>/dev/null)
-        description=$(jq -r '.metadata.description // ""' "${file}" 2>/dev/null)
-        category=$(jq -r '.metadata.category // "other"' "${file}" 2>/dev/null)
+        id=$(jq -r '.metadata.id // "unknown"' "${file}" 2> /dev/null)
+        name=$(jq -r '.metadata.name // "Unknown"' "${file}" 2> /dev/null)
+        description=$(jq -r '.metadata.description // ""' "${file}" 2> /dev/null)
+        category=$(jq -r '.metadata.category // "other"' "${file}" 2> /dev/null)
 
         printf '  [%s] %s\n' "${id}" "${name}"
         printf '      Category: %s\n' "${category}"
@@ -137,7 +137,7 @@ templates::load() {
   fi
 
   # Validate JSON format
-  if ! jq empty "${template_file}" 2>/dev/null; then
+  if ! jq empty "${template_file}" 2> /dev/null; then
     core::log error "invalid template JSON" "$(printf '{"file":"%s"}' "${template_file}")"
     return 1
   fi

@@ -35,13 +35,13 @@ health::check_service() {
   core::log debug "checking xray service status" "{}"
 
   # Check if systemctl is available
-  if ! command -v systemctl >/dev/null 2>&1; then
+  if ! command -v systemctl > /dev/null 2>&1; then
     core::log warn "systemctl not found, skipping service check" "{}"
     return 1
   fi
 
   # Check service status
-  if systemctl is-active --quiet xray.service 2>/dev/null; then
+  if systemctl is-active --quiet xray.service 2> /dev/null; then
     core::log debug "xray service is active" "{}"
     return 0
   else
@@ -96,7 +96,7 @@ health::check_config() {
 
   # Run configuration test
   # xray -test returns 0 if config is valid
-  if "${xray_bin}" -test -confdir "${config_dir}" >/dev/null 2>&1; then
+  if "${xray_bin}" -test -confdir "${config_dir}" > /dev/null 2>&1; then
     core::log debug "xray configuration is valid" "{}"
     return 0
   else
@@ -159,9 +159,9 @@ health::check_network() {
   # Check if ports are listening
   # Try ss first (modern), fall back to netstat
   local check_cmd=""
-  if command -v ss >/dev/null 2>&1; then
+  if command -v ss > /dev/null 2>&1; then
     check_cmd="ss"
-  elif command -v netstat >/dev/null 2>&1; then
+  elif command -v netstat > /dev/null 2>&1; then
     check_cmd="netstat"
   else
     core::log warn "neither ss nor netstat found, skipping network check" "{}"
@@ -267,14 +267,14 @@ health::check_certificates() {
 
   # Check if certificate is expired
   # openssl x509 -checkend 0 returns 0 if not expired
-  if ! openssl x509 -in "${fullchain}" -noout -checkend 0 >/dev/null 2>&1; then
+  if ! openssl x509 -in "${fullchain}" -noout -checkend 0 > /dev/null 2>&1; then
     core::log warn "certificate is expired" "$(printf '{"cert":"%s"}' "${fullchain}")"
     return 1
   fi
 
   # Extract expiry date for logging
   local expiry_date
-  expiry_date=$(openssl x509 -in "${fullchain}" -noout -enddate 2>/dev/null | cut -d= -f2)
+  expiry_date=$(openssl x509 -in "${fullchain}" -noout -enddate 2> /dev/null | cut -d= -f2)
 
   core::log debug "certificates are valid" "$(printf '{"expiry":"%s"}' "${expiry_date}")"
   return 0
@@ -353,7 +353,7 @@ health::run() {
     # Extract expiry date
     local cert_file="${DEFAULT_XRAY_CERT_DIR}/fullchain.pem"
     local expiry_date
-    expiry_date=$(openssl x509 -in "${cert_file}" -noout -enddate 2>/dev/null | cut -d= -f2 | awk '{print $1, $2, $4}')
+    expiry_date=$(openssl x509 -in "${cert_file}" -noout -enddate 2> /dev/null | cut -d= -f2 | awk '{print $1, $2, $4}')
     certs_msg="Valid until ${expiry_date}"
   else
     certs_msg="Missing or expired certificates"
@@ -363,7 +363,8 @@ health::run() {
   if [[ "${XRF_JSON}" == "true" ]]; then
     # JSON format
     local json_output
-    json_output=$(cat <<EOF
+    json_output=$(
+      cat << EOF
 {
   "health": {
     "service": {"passed": $([ "${service_ok}" -eq 1 ] && echo "true" || echo "false"), "message": "${service_msg}"},

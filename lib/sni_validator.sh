@@ -41,7 +41,7 @@ sni::check_tls13() {
     -connect "${domain}:${port}" \
     -servername "${domain}" \
     -tls1_3 \
-    </dev/null 2>&1 | grep -E "Protocol|Cipher")
+    < /dev/null 2>&1 | grep -E "Protocol|Cipher")
 
   if [[ "${tls_output}" =~ TLSv1\.3 ]]; then
     core::log debug "TLS 1.3 supported" "$(printf '{"domain":"%s"}' "${domain}")"
@@ -77,7 +77,7 @@ sni::check_http2() {
   core::log debug "checking HTTP/2 support" "$(printf '{"domain":"%s"}' "${domain}")"
 
   # Check if curl is available
-  if ! command -v curl >/dev/null 2>&1; then
+  if ! command -v curl > /dev/null 2>&1; then
     core::log warn "curl not found, skipping HTTP/2 check" "{}"
     return 1
   fi
@@ -131,7 +131,7 @@ sni::check_redirect() {
   core::log debug "checking for redirects" "$(printf '{"domain":"%s"}' "${domain}")"
 
   # Check if curl is available
-  if ! command -v curl >/dev/null 2>&1; then
+  if ! command -v curl > /dev/null 2>&1; then
     core::log warn "curl not found, skipping redirect check" "{}"
     return 1
   fi
@@ -212,7 +212,8 @@ sni::validate() {
   if [[ "${XRF_JSON}" == "true" ]]; then
     # JSON format
     local json_output
-    json_output=$(cat <<EOF
+    json_output=$(
+      cat << EOF
 {
   "domain": "${domain}",
   "port": ${port},

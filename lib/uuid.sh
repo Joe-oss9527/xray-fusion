@@ -27,15 +27,15 @@ uuid::generate() {
 
   # Try xray uuid first (preferred method)
   if [[ -n "${xray_bin}" && -x "${xray_bin}" ]]; then
-    uuid=$("${xray_bin}" uuid 2>/dev/null) && [[ -n "${uuid}" ]] && {
+    uuid=$("${xray_bin}" uuid 2> /dev/null) && [[ -n "${uuid}" ]] && {
       echo "${uuid}"
       return 0
     }
   fi
 
   # Fallback 1: uuidgen (common on most systems)
-  if command -v uuidgen >/dev/null 2>&1; then
-    uuid=$(uuidgen 2>/dev/null) && [[ -n "${uuid}" ]] && {
+  if command -v uuidgen > /dev/null 2>&1; then
+    uuid=$(uuidgen 2> /dev/null) && [[ -n "${uuid}" ]] && {
       echo "${uuid}"
       return 0
     }
@@ -43,7 +43,7 @@ uuid::generate() {
 
   # Fallback 2: /proc/sys/kernel/random/uuid (Linux-specific)
   if [[ -r /proc/sys/kernel/random/uuid ]]; then
-    uuid=$(cat /proc/sys/kernel/random/uuid 2>/dev/null) && [[ -n "${uuid}" ]] && {
+    uuid=$(cat /proc/sys/kernel/random/uuid 2> /dev/null) && [[ -n "${uuid}" ]] && {
       echo "${uuid}"
       return 0
     }
@@ -97,7 +97,7 @@ uuid::from_string() {
   fi
 
   # Generate UUID from string using xray uuid -i
-  uuid=$("${xray_bin}" uuid -i "${input_string}" 2>/dev/null)
+  uuid=$("${xray_bin}" uuid -i "${input_string}" 2> /dev/null)
 
   if [[ -z "${uuid}" ]]; then
     core::log error "xray uuid -i failed" "$(printf '{"input":"%s"}' "${input_string}")"

@@ -67,7 +67,8 @@ error_codes::show() {
   if [[ "${XRF_JSON}" == "true" ]]; then
     # JSON output format
     local json_output
-    json_output=$(cat <<EOF
+    json_output=$(
+      cat << EOF
 {
   "ts": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "level": "error",
