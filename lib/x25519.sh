@@ -23,7 +23,7 @@ x25519::parse_keys() {
     esac
   done <<< "${output}"
 
-  printf '%s %s\n' "${private}" "${public}"
+  printf '%s\n%s\n' "${private}" "${public}"
 }
 
 x25519::derive_public_key() {
@@ -33,7 +33,9 @@ x25519::derive_public_key() {
     output="$("${xray_bin}" x25519 "${flag}" "${private_key}" 2> /dev/null || true)"
     [[ -z "${output}" ]] && output="$("${xray_bin}" x25519 "${flag}=${private_key}" 2> /dev/null || true)"
     [[ -z "${output}" ]] && continue
-    read -r _ public < <(x25519::parse_keys "${output}")
+    local -a parsed=()
+    mapfile -t parsed < <(x25519::parse_keys "${output}")
+    public="${parsed[1]:-}"
     if [[ -n "${public}" ]]; then
       printf '%s\n' "${public}"
       return 0

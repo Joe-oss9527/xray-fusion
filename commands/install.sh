@@ -238,9 +238,12 @@ main() {
 
   # Generate private/public key pair if not provided
   if [[ -z "${XRAY_PRIVATE_KEY:-}" && -x "$(xray::bin)" ]]; then
-    local keypair private_key public_key
+    local keypair
     keypair="$("$(xray::bin)" x25519 2> /dev/null || true)"
-    read -r private_key public_key < <(x25519::parse_keys "${keypair}")
+    local -a parsed_keypair=()
+    mapfile -t parsed_keypair < <(x25519::parse_keys "${keypair}")
+    local private_key="${parsed_keypair[0]:-}"
+    local public_key="${parsed_keypair[1]:-}"
     if [[ -z "${private_key}" || -z "${public_key}" ]]; then
       core::log error "failed to parse x25519 keypair" '{"suggestion":"verify xray x25519 output"}'
       exit 1

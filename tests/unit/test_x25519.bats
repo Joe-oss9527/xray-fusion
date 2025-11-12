@@ -16,7 +16,10 @@ teardown() {
 @test "x25519::parse_keys extracts private and public values" {
   local output
   output=$(x25519::parse_keys $'Private key: AAAA=\nPublic key: BBBB=')
-  read -r private public <<< "${output}"
+  local -a parsed=()
+  readarray -t parsed <<< "${output}"
+  local private="${parsed[0]:-}"
+  local public="${parsed[1]:-}"
   [ "${private}" = "AAAA=" ]
   [ "${public}" = "BBBB=" ]
 }
@@ -24,7 +27,10 @@ teardown() {
 @test "x25519::parse_keys tolerates uppercase labels and whitespace" {
   local output
   output=$(x25519::parse_keys $'  PUBLIC KEY :  CCCC=\r\n  private KEY:\tDDDD=')
-  read -r private public <<< "${output}"
+  local -a parsed=()
+  readarray -t parsed <<< "${output}"
+  local private="${parsed[0]:-}"
+  local public="${parsed[1]:-}"
   [ "${private}" = "DDDD=" ]
   [ "${public}" = "CCCC=" ]
 }
