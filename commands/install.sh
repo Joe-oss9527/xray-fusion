@@ -4,7 +4,13 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 . "${HERE}/lib/core.sh"
 . "${HERE}/lib/defaults.sh"
 . "${HERE}/lib/args.sh"
+. "${HERE}/lib/uuid.sh"
+. "${HERE}/lib/templates.sh"
+. "${HERE}/lib/preview.sh"
+. "${HERE}/lib/sni_validator.sh"
+. "${HERE}/lib/health_check.sh"
 . "${HERE}/lib/plugins.sh"
+. "${HERE}/lib/backup.sh"
 . "${HERE}/modules/state.sh"
 . "${HERE}/services/xray/common.sh"
 
@@ -47,6 +53,56 @@ main() {
   # Export arguments as environment variables
   args::export_vars
 
+  # Apply template if specified (template values used as defaults, can be overridden by CLI args)
+  if [[ -n "${TEMPLATE}" ]]; then
+    core::log info "applying template" "$(printf '{"template":"%s"}' "${TEMPLATE}")"
+
+    # Validate template exists and is valid
+    if ! templates::validate "${TEMPLATE}"; then
+      core::log error "invalid template" "$(printf '{"template":"%s"}' "${TEMPLATE}")"
+      exit 1
+    fi
+
+    # Export template variables (prefixed with TEMPLATE_*)
+    templates::export "${TEMPLATE}"
+
+    # Apply template defaults only if not explicitly set by CLI
+    # Topology: use template only if user didn't provide --topology
+    if [[ -z "${_TOPOLOGY_EXPLICIT}" && -n "${TEMPLATE_TOPOLOGY:-}" ]]; then
+      TOPOLOGY="${TEMPLATE_TOPOLOGY}"
+      core::log debug "topology from template" "$(printf '{"topology":"%s"}' "${TOPOLOGY}")"
+    fi
+
+    # Version: use template only if user didn't provide --version
+    if [[ -z "${_VERSION_EXPLICIT}" && -n "${TEMPLATE_VERSION:-}" ]]; then
+      VERSION="${TEMPLATE_VERSION}"
+      core::log debug "version from template" "$(printf '{"version":"%s"}' "${VERSION}")"
+    fi
+
+    # Plugins: merge template plugins with CLI plugins
+    if [[ -n "${TEMPLATE_PLUGINS:-}" ]]; then
+      if [[ -z "${_PLUGINS_EXPLICIT}" ]]; then
+        # No CLI plugins, use template plugins
+        PLUGINS="${TEMPLATE_PLUGINS}"
+        core::log debug "plugins from template" "$(printf '{"plugins":"%s"}' "${PLUGINS}")"
+      else
+        # Merge: CLI plugins take priority, add template plugins not already specified
+        PLUGINS="${PLUGINS},${TEMPLATE_PLUGINS}"
+        core::log debug "plugins merged" "$(printf '{"cli":"%s","template":"%s"}' "${PLUGINS%%,*}" "${TEMPLATE_PLUGINS}")"
+      fi
+    fi
+
+    # Export Xray configuration from template (used later in configuration)
+    [[ -n "${TEMPLATE_SNI:-}" ]] && export XRAY_SNI="${TEMPLATE_SNI}"
+    [[ -n "${TEMPLATE_REALITY_DEST:-}" ]] && export XRAY_REALITY_DEST="${TEMPLATE_REALITY_DEST}"
+    [[ -n "${TEMPLATE_SNIFFING:-}" ]] && export XRAY_SNIFFING="${TEMPLATE_SNIFFING}"
+    [[ -n "${TEMPLATE_PORT:-}" ]] && export XRAY_PORT="${TEMPLATE_PORT}"
+    [[ -n "${TEMPLATE_VISION_PORT:-}" ]] && export XRAY_VISION_PORT="${TEMPLATE_VISION_PORT}"
+    [[ -n "${TEMPLATE_REALITY_PORT:-}" ]] && export XRAY_REALITY_PORT="${TEMPLATE_REALITY_PORT}"
+
+    core::log info "template applied" "$(printf '{"template":"%s","topology":"%s"}' "${TEMPLATE}" "${TOPOLOGY}")"
+  fi
+
   # Enable plugins if specified
   if [[ -n "${PLUGINS}" ]]; then
     core::log info "enabling plugins" "$(printf '{"plugins":"%s"}' "${PLUGINS}")"
@@ -64,17 +120,71 @@ main() {
     plugins::load_enabled
   fi
 
+  # Show installation preview
+  preview::show
+
+  # Check for dry-run mode (exit after preview)
+  if preview::is_dry_run; then
+    core::log info "dry-run mode, skipping installation" "{}"
+    exit 0
+  fi
+
+  # Request user confirmation (unless --yes flag)
+  if ! preview::confirm; then
+    core::log info "installation cancelled" "{}"
+    exit 1
+  fi
+
+  # Auto-backup before installation (if existing installation found)
+  local state_file
+  state_file="$(state::path)"
+  if [[ -f "${state_file}" ]]; then
+    core::log info "existing installation detected, creating automatic backup" "{}"
+    local auto_backup_name
+    auto_backup_name="pre-install-$(date +%Y%m%d-%H%M%S)"
+    if backup::create "${auto_backup_name}" > /dev/null 2>&1; then
+      core::log info "automatic backup created" "$(printf '{"name":"%s"}' "${auto_backup_name}")"
+    else
+      core::log warn "failed to create automatic backup" '{"suggestion":"continuing with installation"}'
+      # Continue anyway - user confirmed installation
+    fi
+  fi
+
   plugins::emit install_pre "topology=${TOPOLOGY}" "version=${VERSION}"
   "${HERE}/services/xray/install.sh" --version "${VERSION}"
+
+  # Generate or use provided UUIDs
+  local generated_uuid=""
+  if [[ -n "${UUID_FROM_STRING:-}" ]]; then
+    # Custom UUID from string (requires xray binary)
+    core::log debug "generating UUID from custom string" "$(printf '{"input":"%s"}' "${UUID_FROM_STRING}")"
+    generated_uuid="$(uuid::from_string "${UUID_FROM_STRING}" "$(xray::bin)")" || {
+      core::log error "failed to generate UUID from string" "$(printf '{"input":"%s","suggestion":"ensure xray is installed"}' "${UUID_FROM_STRING}")"
+      exit 1
+    }
+  elif [[ -n "${UUID:-}" ]]; then
+    # User-provided UUID
+    if ! uuid::validate "${UUID}"; then
+      error_codes::invalid_uuid "${UUID}"
+      exit 1
+    fi
+    generated_uuid="${UUID}"
+  fi
 
   if [[ "${TOPOLOGY}" == "vision-reality" ]]; then
     core::log debug "configuring vision-reality topology" "$(printf '{"XRAY_DOMAIN":"%s"}' "${XRAY_DOMAIN:-unset}")"
     : "${XRAY_VISION_PORT:=${DEFAULT_XRAY_VISION_PORT}}" : "${XRAY_REALITY_PORT:=${DEFAULT_XRAY_REALITY_PORT}}" : "${XRAY_CERT_DIR:=${DEFAULT_XRAY_CERT_DIR}}" : "${XRAY_FALLBACK_PORT:=${DEFAULT_XRAY_FALLBACK_PORT}}"
-    if [[ -z "${XRAY_UUID_VISION:-}" ]]; then XRAY_UUID_VISION="$("$(xray::bin)" uuid 2> /dev/null || uuidgen)"; fi
-    if [[ -z "${XRAY_UUID_REALITY:-}" ]]; then XRAY_UUID_REALITY="$("$(xray::bin)" uuid 2> /dev/null || uuidgen)"; fi
+    if [[ -z "${XRAY_UUID_VISION:-}" ]]; then
+      XRAY_UUID_VISION="${generated_uuid:-$(uuid::generate "$(xray::bin)")}"
+    fi
+    if [[ -z "${XRAY_UUID_REALITY:-}" ]]; then
+      XRAY_UUID_REALITY="$(uuid::generate "$(xray::bin)")"
+    fi
   else
     : "${XRAY_PORT:=${DEFAULT_XRAY_PORT}}"
-    if [[ -z "${XRAY_UUID:-}" ]]; then XRAY_UUID="$("$(xray::bin)" uuid 2> /dev/null || uuidgen)"; fi
+    if [[ -z "${XRAY_UUID:-}" ]]; then
+      XRAY_UUID="${generated_uuid:-$(uuid::generate "$(xray::bin)")}"
+    fi
   fi
   : "${XRAY_SNI:=${DEFAULT_XRAY_SNI}}"
   if [[ -z "${XRAY_REALITY_DEST:-}" ]]; then
@@ -83,6 +193,19 @@ main() {
   if [[ "${XRAY_REALITY_DEST}" != *:* ]]; then
     XRAY_REALITY_DEST="${XRAY_REALITY_DEST}:443"
   fi
+
+  # Validate SNI domain (optional check, warn if fails)
+  # Extract domain from REALITY_DEST (remove port)
+  local sni_domain="${XRAY_REALITY_DEST%:*}"
+  core::log info "validating SNI domain" "$(printf '{"domain":"%s"}' "${sni_domain}")"
+
+  # Run SNI validation silently (log results only)
+  if ! sni::validate "${sni_domain}" > /dev/null 2>&1; then
+    core::log warn "SNI validation failed" "$(printf '{"domain":"%s","suggestion":"REALITY may work but with reduced reliability"}' "${sni_domain}")"
+  else
+    core::log info "SNI validation passed" "$(printf '{"domain":"%s"}' "${sni_domain}")"
+  fi
+
   # Generate shortIds pool (3-5 shortIds for multi-client scenarios)
   # Uses xray::generate_shortids() for batch generation (performance optimization)
   # Tries: xxd (simple) → od (POSIX) → openssl (fallback)
@@ -152,5 +275,14 @@ main() {
 
   "${HERE}/services/xray/client-links.sh" "${TOPOLOGY}"
   core::log info "Install complete" "$(printf '{"topology":"%s","version":"%s"}' "${TOPOLOGY}" "${version}")"
+
+  # Run post-installation health check
+  core::log info "running post-installation health check" "{}"
+  printf '\n'
+  if health::run; then
+    core::log info "health check passed" "{}"
+  else
+    core::log warn "health check failed" '{"suggestion":"run xrf health to diagnose issues"}'
+  fi
 }
 main "${@}"

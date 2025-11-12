@@ -11,6 +11,11 @@ Usage: xrf <command>
   status      Show version & active confdir
   uninstall   Remove Xray (keep state)
   links       Print client links
+  logs        View, filter, and export Xray logs
+  backup      Manage configuration backups
+  test-sni    Test SNI domain for REALITY protocol compatibility
+  health      Run post-installation health check
+  templates   Manage configuration templates
   plugin      Manage plugins (list/enable/disable/info)
   help        Show this help
 EOF
@@ -31,6 +36,26 @@ case "${1-}" in
   links)
     shift || true
     "${HERE}/services/xray/client-links.sh" "$@"
+    ;;
+  logs)
+    shift || true
+    "${HERE}/commands/logs.sh" "$@"
+    ;;
+  backup)
+    shift || true
+    "${HERE}/commands/backup.sh" "$@"
+    ;;
+  test-sni)
+    shift || true
+    "${HERE}/commands/test-sni.sh" "$@"
+    ;;
+  health)
+    shift || true
+    "${HERE}/commands/health.sh" "$@"
+    ;;
+  templates)
+    shift || true
+    "${HERE}/commands/templates.sh" "$@"
     ;;
   plugin)
     shift || true

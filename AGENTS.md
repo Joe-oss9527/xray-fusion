@@ -377,6 +377,67 @@ readonly DEFAULT_VERSION="latest"
 
 **Reference**: Fixed in commit 3904ccb (2025-11-11)
 
+### Module Dependency Management
+
+**Critical**: When a module uses constants or functions from another module, it MUST explicitly source that dependency. Shellcheck disable comments (SC2154) are NOT a substitute for proper dependency management.
+
+```bash
+# ❌ Wrong: Using constants without sourcing their definition
+# lib/health_check.sh
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+. "${HERE}/modules/state.sh"
+. "${HERE}/services/xray/common.sh"
+
+health::check_certificates() {
+  # shellcheck disable=SC2154  # DEFAULT_XRAY_CERT_DIR from lib/defaults.sh
+  cert_dir="${DEFAULT_XRAY_CERT_DIR}"  # Bug: lib/defaults.sh never sourced!
+
+  # cert_dir is empty string, checks /fullchain.pem instead of
+  # /usr/local/etc/xray/certs/fullchain.pem
+  [[ -f "${cert_dir}/fullchain.pem" ]] || return 1
+}
+
+# ✅ Correct: Explicitly source all dependencies
+# lib/health_check.sh
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib/defaults.sh
+. "${HERE}/lib/defaults.sh"  # Source before using DEFAULT_XRAY_CERT_DIR
+# shellcheck source=modules/state.sh
+. "${HERE}/modules/state.sh"
+# shellcheck source=services/xray/common.sh
+. "${HERE}/services/xray/common.sh"
+
+health::check_certificates() {
+  # shellcheck disable=SC2154  # DEFAULT_XRAY_CERT_DIR from lib/defaults.sh
+  cert_dir="${DEFAULT_XRAY_CERT_DIR}"  # Now correctly defined
+
+  # Checks correct path: /usr/local/etc/xray/certs/fullchain.pem
+  [[ -f "${cert_dir}/fullchain.pem" ]] || return 1
+}
+```
+
+**Why this matters**:
+- Undefined variables default to empty string in bash (with `set -u` they cause errors)
+- Empty strings in path constructions lead to checking wrong locations (e.g., `/file` instead of `/dir/file`)
+- Shellcheck SC2154 warnings indicate missing dependencies, not permission to ignore them
+- Tests may pass if test environment accidentally provides the missing variables
+
+**Dependency Management Checklist**:
+1. **Identify all external constants/functions** used in your module
+2. **Source their defining modules** at the top of your file
+3. **Add shellcheck source comments** for static analysis to follow
+4. **Document dependencies** in function documentation (Globals section)
+5. **Use source guards** in all library files to prevent double-sourcing issues
+
+**Common dependency sources**:
+- `lib/defaults.sh` - Project-wide default values (DEFAULT_*)
+- `lib/core.sh` - Core utilities (core::log, core::with_flock)
+- `modules/io.sh` - I/O utilities (io::ensure_dir, io::atomic_write)
+- `modules/state.sh` - State management (state::path, state::load)
+- `services/xray/common.sh` - Xray utilities (xray::prefix, xray::generate_shortid)
+
+**Reference**: Fixed in commit b5cc468 (2025-11-12) - lib/health_check.sh missing lib/defaults.sh source
+
 ### Variable Pollution Defense
 ```bash
 # ❌ Wrong: Directly sourcing external files may pollute variables

@@ -8,6 +8,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 . "${HERE}/lib/defaults.sh"
 # shellcheck source=lib/validators.sh
 . "${HERE}/lib/validators.sh"
+# shellcheck source=lib/error_codes.sh
+. "${HERE}/lib/error_codes.sh"
 
 # Initialize default values
 args::init() {
@@ -16,6 +18,16 @@ args::init() {
   VERSION="${DEFAULT_VERSION}"
   PLUGINS=""
   DEBUG="${DEFAULT_XRF_DEBUG}"
+  UUID=""
+  UUID_FROM_STRING=""
+  XRF_YES="false"
+  XRF_DRY_RUN="false"
+  TEMPLATE=""
+
+  # Tracking flags for explicit CLI arguments (used by template override logic)
+  _TOPOLOGY_EXPLICIT=""
+  _VERSION_EXPLICIT=""
+  _PLUGINS_EXPLICIT=""
 }
 
 # Parse command line arguments
@@ -25,6 +37,7 @@ args::parse() {
       --topology | -t)
         args::validate_topology "${2:-}" || return 1
         TOPOLOGY="${2}"
+        _TOPOLOGY_EXPLICIT="true"
         shift 2
         ;;
       --domain | -d)
@@ -35,14 +48,36 @@ args::parse() {
       --version | -v)
         args::validate_version "${2:-}" || return 1
         VERSION="${2}"
+        _VERSION_EXPLICIT="true"
         shift 2
         ;;
       --plugins | -p)
         PLUGINS="${2:-}"
+        _PLUGINS_EXPLICIT="true"
+        shift 2
+        ;;
+      --uuid)
+        UUID="${2:-}"
+        shift 2
+        ;;
+      --uuid-from-string)
+        UUID_FROM_STRING="${2:-}"
+        shift 2
+        ;;
+      --template)
+        TEMPLATE="${2:-}"
         shift 2
         ;;
       --debug)
         DEBUG="true"
+        shift
+        ;;
+      --yes | -y)
+        XRF_YES="true"
+        shift
+        ;;
+      --dry-run)
+        XRF_DRY_RUN="true"
         shift
         ;;
       --help | -h)
@@ -62,8 +97,15 @@ args::parse() {
   # Validate configuration
   args::validate_config || return 1
 
+  # Validate UUID parameters if provided
+  if [[ -n "${UUID}" && -n "${UUID_FROM_STRING}" ]]; then
+    core::log error "cannot use both --uuid and --uuid-from-string" "{}"
+    return 1
+  fi
+
   # Export variables for use by other modules
-  export TOPOLOGY DOMAIN VERSION PLUGINS DEBUG
+  export TOPOLOGY DOMAIN VERSION PLUGINS DEBUG UUID UUID_FROM_STRING XRF_YES XRF_DRY_RUN TEMPLATE
+  export _TOPOLOGY_EXPLICIT _VERSION_EXPLICIT _PLUGINS_EXPLICIT
 
   return 0
 }
@@ -72,7 +114,7 @@ args::parse() {
 args::validate_topology() {
   local topology="${1:-}"
   if [[ -z "${topology}" ]]; then
-    core::log error "topology cannot be empty" "{}"
+    error_codes::missing_parameter "topology" ""
     return 1
   fi
 
@@ -81,7 +123,7 @@ args::validate_topology() {
       return 0
       ;;
     *)
-      core::log error "invalid topology" "$(printf '{"topology":"%s","valid":"reality-only,vision-reality"}' "${topology}")"
+      error_codes::invalid_topology "${topology}"
       return 1
       ;;
   esac
@@ -96,7 +138,30 @@ args::validate_domain() {
 
   # Use shared validator (RFC compliant, length limits, internal domain check)
   if ! validators::domain "${domain}"; then
-    core::log error "invalid domain" "$(printf '{"domain":"%s"}' "${domain}")"
+    # Detect specific reason for failure
+    local reason=""
+    case "${domain}" in
+      localhost | *.local | 127.* | 0.0.0.0)
+        reason="loopback or local address"
+        ;;
+      10.* | 172.1[6-9].* | 172.2[0-9].* | 172.3[0-1].* | 192.168.*)
+        reason="RFC 1918 private IP address"
+        ;;
+      169.254.*)
+        reason="RFC 3927 link-local address"
+        ;;
+      *.test | *.invalid)
+        reason="RFC 6761 special-use domain name"
+        ;;
+      ::1 | fc* | fd* | fe80*)
+        reason="IPv6 private address"
+        ;;
+      *)
+        reason="invalid format or too long"
+        ;;
+    esac
+
+    error_codes::invalid_domain "${domain}" "${reason}"
     return 1
   fi
 
@@ -124,7 +189,7 @@ args::validate_version() {
 args::validate_config() {
   # vision-reality topology requires domain
   if [[ "${TOPOLOGY}" == "vision-reality" && -z "${DOMAIN}" ]]; then
-    core::log error "vision-reality topology requires domain" "$(printf '{"topology":"%s"}' "${TOPOLOGY}")"
+    error_codes::missing_parameter "domain" "vision-reality topology"
     return 1
   fi
 
@@ -138,7 +203,12 @@ Options:
   --topology, -t <type>         Installation topology (reality-only|vision-reality)
   --domain, -d <domain>         Domain for vision-reality topology (required)
   --version, -v <version>       Xray version to install (default: latest)
+  --template <id>               Use pre-built template (home|office|server)
   --plugins, -p <list>          Comma-separated list of plugins to enable
+  --uuid <uuid>                 Custom UUID (default: auto-generated)
+  --uuid-from-string <string>   Generate UUID from custom string
+  --yes, -y                     Auto-confirm installation (skip prompt)
+  --dry-run                     Show preview without installing
   --debug                       Enable debug output
   --help, -h                    Show this help
 
@@ -146,11 +216,26 @@ Examples:
   # Reality-only topology
   --topology reality-only
 
+  # Install with home template (quick start)
+  --template home
+
+  # Install with office template and custom domain
+  --template office --domain vpn.company.com
+
   # Vision-Reality with domain and plugins
   --topology vision-reality --domain your.domain.com --plugins cert-auto
 
+  # Preview without installing
+  --topology reality-only --dry-run
+
+  # Auto-confirm installation
+  --topology reality-only --yes
+
   # Specific version
   --version v1.8.1
+
+  # List available templates
+  xrf templates list
 
 EOF
 }
