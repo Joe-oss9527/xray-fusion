@@ -88,11 +88,17 @@ health::check_config() {
   fi
 
   local config_dir
-  config_dir="$(xray::confbase)"
+  config_dir="$(xray::active)"
 
-  # Check if config directory exists
+  # Check if active config directory exists
   if [[ ! -d "${config_dir}" ]]; then
-    core::log warn "xray config directory not found" "$(printf '{"path":"%s"}' "${config_dir}")"
+    core::log warn "xray active config directory not found" "$(printf '{"path":"%s"}' "${config_dir}")"
+    return 1
+  fi
+
+  # Ensure the directory contains JSON config files before running validation
+  if ! compgen -G "${config_dir}"'/*.json' > /dev/null; then
+    core::log warn "xray config files missing" "$(printf '{"path":"%s"}' "${config_dir}")"
     return 1
   fi
 

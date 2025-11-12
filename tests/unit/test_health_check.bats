@@ -58,6 +58,24 @@ setup() {
   [ "$status" -eq 1 ]
 }
 
+@test "health::check_config - returns 1 if active config directory missing" {
+  xray::bin() { echo "$(command -v true)"; }
+  xray::active() { echo "${BATS_TEST_TMPDIR}/missing-active"; }
+
+  run health::check_config
+  [ "$status" -eq 1 ]
+}
+
+@test "health::check_config - returns 1 if no config files found" {
+  ACTIVE_CONFIG_DIR="${BATS_TEST_TMPDIR}/active-empty"
+  mkdir -p "${ACTIVE_CONFIG_DIR}"
+  xray::bin() { echo "$(command -v true)"; }
+  xray::active() { echo "${ACTIVE_CONFIG_DIR}"; }
+
+  run health::check_config
+  [ "$status" -eq 1 ]
+}
+
 @test "health::check_config - returns 1 if config directory not found" {
   skip "requires xray binary"
 
