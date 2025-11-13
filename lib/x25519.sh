@@ -1,8 +1,23 @@
 #!/usr/bin/env bash
 # X25519 key utilities shared across install and status workflows
 
+x25519::trim() {
+  local value="${1-}"
+  value="${value//$'\r'/}"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf '%s' "${value}"
+}
+
+x25519::sanitize_token() {
+  local value="${1-}"
+  value="${value//$'\r'/}"
+  value="$(printf '%s' "${value}" | tr -d -c 'A-Za-z0-9+/=')"
+  printf '%s' "${value}"
+}
+
 x25519::parse_keys() {
-  local output="${1}" line expect="" label value normalized
+  local output="${1}" line expect="" label value value_clean normalized
   local private="" public=""
 
   while IFS= read -r line || [[ -n "${line}" ]]; do
@@ -10,9 +25,9 @@ x25519::parse_keys() {
     [[ -z "${line//[[:space:]]/}" ]] && continue
 
     if [[ -n "${expect}" ]]; then
-      value="${line//[[:space:]]/}"
-      value="${value//[^A-Za-z0-9+/=]/}"
-      if [[ "${value}" =~ ^[A-Za-z0-9+/=]{4,}$ ]]; then
+      value="$(x25519::trim "${line}")"
+      value_clean="$(x25519::sanitize_token "${value}")"
+      if [[ "${value_clean}" =~ ^[A-Za-z0-9+/=]{4,}$ ]]; then
         if [[ "${expect}" == "private" && -z "${private}" ]]; then
           private="${value}"
         elif [[ "${expect}" == "public" && -z "${public}" ]]; then
@@ -30,11 +45,11 @@ x25519::parse_keys() {
     normalized="${label,,}"
     normalized="${normalized//[[:space:]]/}"
     normalized="${normalized//[^a-z]/}"
-    value="${value//[[:space:]]/}"
-    value="${value//[^A-Za-z0-9+/=]/}"
+    value="$(x25519::trim "${value}")"
+    value_clean="$(x25519::sanitize_token "${value}")"
 
     if [[ "${normalized}" == *private*key* ]]; then
-      if [[ "${value}" =~ ^[A-Za-z0-9+/=]{4,}$ && -z "${private}" ]]; then
+      if [[ "${value_clean}" =~ ^[A-Za-z0-9+/=]{4,}$ && -z "${private}" ]]; then
         private="${value}"
         expect=""
         continue
@@ -44,7 +59,7 @@ x25519::parse_keys() {
     fi
 
     if [[ "${normalized}" == *public*key* ]]; then
-      if [[ "${value}" =~ ^[A-Za-z0-9+/=]{4,}$ && -z "${public}" ]]; then
+      if [[ "${value_clean}" =~ ^[A-Za-z0-9+/=]{4,}$ && -z "${public}" ]]; then
         public="${value}"
         expect=""
         continue
