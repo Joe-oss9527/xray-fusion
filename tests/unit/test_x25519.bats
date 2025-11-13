@@ -24,6 +24,17 @@ teardown() {
   [ "${public}" = "BBBB=" ]
 }
 
+@test "x25519::parse_keys accepts Base64URL characters" {
+  local output
+  output=$(x25519::parse_keys $'Private key: AAAA-_==\nPublic key: BBBB-_==')
+  local -a parsed=()
+  readarray -t parsed <<< "${output}"
+  local private="${parsed[0]:-}"
+  local public="${parsed[1]:-}"
+  [ "${private}" = "AAAA-_==" ]
+  [ "${public}" = "BBBB-_==" ]
+}
+
 @test "x25519::parse_keys tolerates uppercase labels and whitespace" {
   local output
   output=$(x25519::parse_keys $'  PUBLIC KEY :  CCCC=\r\n  private KEY:\tDDDD=')

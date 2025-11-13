@@ -12,7 +12,11 @@ x25519::trim() {
 x25519::sanitize_token() {
   local value="${1-}"
   value="${value//$'\r'/}"
-  value="$(printf '%s' "${value}" | tr -d -c 'A-Za-z0-9+/=')"
+  # Allow Base64 ("+/=") and Base64URL ("-_") alphabets so we can
+  # parse outputs from newer Xray releases that switched to Base64URL
+  # for x25519 keys. This maintains compatibility with older versions
+  # while accepting the broader character set.
+  value="$(printf '%s' "${value}" | tr -d -c 'A-Za-z0-9+/=_-')"
   printf '%s' "${value}"
 }
 
@@ -27,7 +31,7 @@ x25519::parse_keys() {
     if [[ -n "${expect}" ]]; then
       value="$(x25519::trim "${line}")"
       value_clean="$(x25519::sanitize_token "${value}")"
-      if [[ "${value_clean}" =~ ^[A-Za-z0-9+/=]{4,}$ ]]; then
+      if [[ "${value_clean}" =~ ^[A-Za-z0-9+/=_-]{4,}$ ]]; then
         if [[ "${expect}" == "private" && -z "${private}" ]]; then
           private="${value}"
         elif [[ "${expect}" == "public" && -z "${public}" ]]; then
@@ -49,7 +53,7 @@ x25519::parse_keys() {
     value_clean="$(x25519::sanitize_token "${value}")"
 
     if [[ "${normalized}" == *private*key* ]]; then
-      if [[ "${value_clean}" =~ ^[A-Za-z0-9+/=]{4,}$ && -z "${private}" ]]; then
+      if [[ "${value_clean}" =~ ^[A-Za-z0-9+/=_-]{4,}$ && -z "${private}" ]]; then
         private="${value}"
         expect=""
         continue
@@ -59,7 +63,7 @@ x25519::parse_keys() {
     fi
 
     if [[ "${normalized}" == *public*key* ]]; then
-      if [[ "${value_clean}" =~ ^[A-Za-z0-9+/=]{4,}$ && -z "${public}" ]]; then
+      if [[ "${value_clean}" =~ ^[A-Za-z0-9+/=_-]{4,}$ && -z "${public}" ]]; then
         public="${value}"
         expect=""
         continue
