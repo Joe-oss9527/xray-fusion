@@ -57,6 +57,17 @@ teardown() {
   [ "${public}" = "HHHH=" ]
 }
 
+@test "x25519::parse_keys prefers base64 sections" {
+  local output
+  output=$(x25519::parse_keys $'Private key:\n  base64: MMMM=\n  hex: 41424344\nPublic key:\n  base64: NNNN=\n  hex: 45464748')
+  local -a parsed=()
+  readarray -t parsed <<< "${output}"
+  local private="${parsed[0]:-}"
+  local public="${parsed[1]:-}"
+  [ "${private}" = "MMMM=" ]
+  [ "${public}" = "NNNN=" ]
+}
+
 @test "x25519::parse_keys handles inline key pairs" {
   local output
   output=$(x25519::parse_keys $'Private key: IIII= Public key: JJJJ=')

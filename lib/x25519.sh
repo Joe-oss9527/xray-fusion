@@ -15,7 +15,7 @@ x25519::strip_ansi() {
 x25519::consume_token() {
   local text="${1-}"
 
-  if [[ "${text}" =~ ^[[:space:]]*([A-Za-z0-9+/=]{4,}) ]]; then
+  if [[ "${text}" =~ ^[[:space:]]*([A-Za-z0-9+/]{4,}={1,2}) ]]; then
     local token="${BASH_REMATCH[1]}"
     local prefix="${BASH_REMATCH[0]}"
     local prefix_len="${#prefix}"
@@ -58,8 +58,42 @@ x25519::parse_keys() {
 
     remainder="${line}"
 
-    if [[ -n "${expect}" ]]; then
-      if [[ "${remainder}" != *:* ]]; then
+    while [[ -n "${remainder}" ]]; do
+      if [[ "${remainder}" == *:* ]]; then
+        local label="${remainder%%:*}"
+        remainder="${remainder#*:}"
+
+        classification="$(x25519::classify_label "${label}" 2> /dev/null || true)"
+        local consumed=""
+        consumed="$(x25519::consume_token "${remainder}" 2> /dev/null || true)"
+        if [[ -n "${consumed}" ]]; then
+          local token="" rest=""
+          token="${consumed%%$'\n'*}"
+          if [[ "${consumed}" == *$'\n'* ]]; then
+            rest="${consumed#*$'\n'}"
+          fi
+          local target="${classification:-${expect}}"
+          if [[ "${target}" == "private" && -z "${private}" ]]; then
+            private="${token}"
+          elif [[ "${target}" == "public" && -z "${public}" ]]; then
+            public="${token}"
+          fi
+          remainder="${rest}"
+          [[ -n "${classification}" ]] && expect=""
+          continue
+        fi
+
+        if [[ -n "${classification}" ]]; then
+          [[ "${classification}" == "private" && -n "${private}" ]] && classification=""
+          [[ "${classification}" == "public" && -n "${public}" ]] && classification=""
+          [[ -n "${classification}" ]] && expect="${classification}"
+          continue
+        fi
+
+        continue
+      fi
+
+      if [[ -n "${expect}" ]]; then
         local consumed=""
         consumed="$(x25519::consume_token "${remainder}" 2> /dev/null || true)"
         if [[ -n "${consumed}" ]]; then
@@ -77,43 +111,8 @@ x25519::parse_keys() {
           expect=""
           continue
         fi
-
-        # no token found on this line; move to next line
-        continue
       fi
 
-      # colon encountered before value; drop expectation and process labels
-      expect=""
-    fi
-
-    while [[ "${remainder}" == *:* ]]; do
-      local label="${remainder%%:*}"
-      remainder="${remainder#*:}"
-
-      local classification=""
-      classification="$(x25519::classify_label "${label}" 2> /dev/null || true)"
-      if [[ -z "${classification}" ]]; then
-        continue
-      fi
-
-      local consumed=""
-      consumed="$(x25519::consume_token "${remainder}" 2> /dev/null || true)"
-      if [[ -n "${consumed}" ]]; then
-        local token="" rest=""
-        token="${consumed%%$'\n'*}"
-        if [[ "${consumed}" == *$'\n'* ]]; then
-          rest="${consumed#*$'\n'}"
-        fi
-        if [[ "${classification}" == "private" && -z "${private}" ]]; then
-          private="${token}"
-        elif [[ "${classification}" == "public" && -z "${public}" ]]; then
-          public="${token}"
-        fi
-        remainder="${rest}"
-        continue
-      fi
-
-      expect="${classification}"
       break
     done
   done <<< "${output}"
