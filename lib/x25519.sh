@@ -2,21 +2,20 @@
 # X25519 key utilities shared across install and status workflows
 
 x25519::parse_keys() {
-  local output="${1}" line lower value expect=""
+  local output="${1}" line expect="" label value normalized
   local private="" public=""
 
   while IFS= read -r line || [[ -n "${line}" ]]; do
     line="${line//$'\r'/}"
     [[ -z "${line//[[:space:]]/}" ]] && continue
-    lower="${line,,}"
 
-    if [[ ${expect} == "private" || ${expect} == "public" ]]; then
+    if [[ -n "${expect}" ]]; then
       value="${line//[[:space:]]/}"
       value="${value//[^A-Za-z0-9+/=]/}"
-      if [[ ${#value} -ge 32 ]]; then
-        if [[ ${expect} == "private" && -z "${private}" ]]; then
+      if [[ "${value}" =~ ^[A-Za-z0-9+/=]{4,}$ ]]; then
+        if [[ "${expect}" == "private" && -z "${private}" ]]; then
           private="${value}"
-        elif [[ ${expect} == "public" && -z "${public}" ]]; then
+        elif [[ "${expect}" == "public" && -z "${public}" ]]; then
           public="${value}"
         fi
         expect=""
@@ -24,31 +23,31 @@ x25519::parse_keys() {
       fi
     fi
 
-    if [[ "${lower}" == *private*key* ]]; then
-      value="${line#*:}"
-      if [[ "${value}" != "${line}" ]]; then
-        value="${value//[[:space:]]/}"
-        value="${value//[^A-Za-z0-9+/=]/}"
-        if [[ ${#value} -ge 32 && -z "${private}" ]]; then
-          private="${value}"
-          expect=""
-          continue
-        fi
+    [[ "${line}" != *:* ]] && continue
+
+    label="${line%%:*}"
+    value="${line#*:}"
+    normalized="${label,,}"
+    normalized="${normalized//[[:space:]]/}"
+    normalized="${normalized//[^a-z]/}"
+    value="${value//[[:space:]]/}"
+    value="${value//[^A-Za-z0-9+/=]/}"
+
+    if [[ "${normalized}" == *private*key* ]]; then
+      if [[ "${value}" =~ ^[A-Za-z0-9+/=]{4,}$ && -z "${private}" ]]; then
+        private="${value}"
+        expect=""
+        continue
       fi
       expect="private"
       continue
     fi
 
-    if [[ "${lower}" == *public*key* ]]; then
-      value="${line#*:}"
-      if [[ "${value}" != "${line}" ]]; then
-        value="${value//[[:space:]]/}"
-        value="${value//[^A-Za-z0-9+/=]/}"
-        if [[ ${#value} -ge 32 && -z "${public}" ]]; then
-          public="${value}"
-          expect=""
-          continue
-        fi
+    if [[ "${normalized}" == *public*key* ]]; then
+      if [[ "${value}" =~ ^[A-Za-z0-9+/=]{4,}$ && -z "${public}" ]]; then
+        public="${value}"
+        expect=""
+        continue
       fi
       expect="public"
       continue
