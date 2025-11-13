@@ -1,26 +1,72 @@
 #!/usr/bin/env bash
 # X25519 key utilities shared across install and status workflows
 
+x25519::trim() {
+  local value="${1-}"
+  value="${value//$'\r'/}"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf '%s' "${value}"
+}
+
+x25519::sanitize_token() {
+  local value="${1-}"
+  value="${value//$'\r'/}"
+  value="$(printf '%s' "${value}" | tr -d -c 'A-Za-z0-9+/=')"
+  printf '%s' "${value}"
+}
+
 x25519::parse_keys() {
-  local output="${1}" label value
+  local output="${1}" line expect="" label value value_clean normalized
   local private="" public=""
 
-  while IFS=: read -r label value; do
-    [[ -z "${label}" ]] && continue
-    label="${label//:/}"
-    label="${label//[[:space:]]/}"
-    label="${label,,}"
-    value="${value//[$'\r']/}"
-    value="${value//[[:space:]]/}"
-    case "${label}" in
-      privatekey)
-        [[ -z "${private}" && -n "${value}" ]] && private="${value}"
-        ;;
-      publickey)
-        [[ -z "${public}" && -n "${value}" ]] && public="${value}"
-        ;;
-      *) ;;
-    esac
+  while IFS= read -r line || [[ -n "${line}" ]]; do
+    line="${line//$'\r'/}"
+    [[ -z "${line//[[:space:]]/}" ]] && continue
+
+    if [[ -n "${expect}" ]]; then
+      value="$(x25519::trim "${line}")"
+      value_clean="$(x25519::sanitize_token "${value}")"
+      if [[ "${value_clean}" =~ ^[A-Za-z0-9+/=]{4,}$ ]]; then
+        if [[ "${expect}" == "private" && -z "${private}" ]]; then
+          private="${value}"
+        elif [[ "${expect}" == "public" && -z "${public}" ]]; then
+          public="${value}"
+        fi
+        expect=""
+        continue
+      fi
+    fi
+
+    [[ "${line}" != *:* ]] && continue
+
+    label="${line%%:*}"
+    value="${line#*:}"
+    normalized="${label,,}"
+    normalized="${normalized//[[:space:]]/}"
+    normalized="${normalized//[^a-z]/}"
+    value="$(x25519::trim "${value}")"
+    value_clean="$(x25519::sanitize_token "${value}")"
+
+    if [[ "${normalized}" == *private*key* ]]; then
+      if [[ "${value_clean}" =~ ^[A-Za-z0-9+/=]{4,}$ && -z "${private}" ]]; then
+        private="${value}"
+        expect=""
+        continue
+      fi
+      expect="private"
+      continue
+    fi
+
+    if [[ "${normalized}" == *public*key* ]]; then
+      if [[ "${value_clean}" =~ ^[A-Za-z0-9+/=]{4,}$ && -z "${public}" ]]; then
+        public="${value}"
+        expect=""
+        continue
+      fi
+      expect="public"
+      continue
+    fi
   done <<< "${output}"
 
   printf '%s\n%s\n' "${private}" "${public}"

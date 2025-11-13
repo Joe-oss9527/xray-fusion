@@ -35,6 +35,28 @@ teardown() {
   [ "${public}" = "CCCC=" ]
 }
 
+@test "x25519::parse_keys handles annotated labels" {
+  local output
+  output=$(x25519::parse_keys $'Private key (hex): EEEE=\nPublic key (display): FFFF=')
+  local -a parsed=()
+  readarray -t parsed <<< "${output}"
+  local private="${parsed[0]:-}"
+  local public="${parsed[1]:-}"
+  [ "${private}" = "EEEE=" ]
+  [ "${public}" = "FFFF=" ]
+}
+
+@test "x25519::parse_keys handles multiline values" {
+  local output
+  output=$(x25519::parse_keys $'Private key:\n  GGGG=\nPublic key:\n  HHHH=')
+  local -a parsed=()
+  readarray -t parsed <<< "${output}"
+  local private="${parsed[0]:-}"
+  local public="${parsed[1]:-}"
+  [ "${private}" = "GGGG=" ]
+  [ "${public}" = "HHHH=" ]
+}
+
 @test "x25519::derive_public_key uses --key flag when available" {
   local fake_xray="${BATS_TEST_TMPDIR}/xray-bin"
   cat <<'SCRIPT' > "${fake_xray}"
